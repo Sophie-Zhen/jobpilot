@@ -1,0 +1,34 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[hidelinks]{hyperref}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{10pt}
+
+\begin{document}
+
+\VAR{name}\\
+\VAR{date}
+
+\vspace{20pt}
+
+\BLOCK{if company}
+\VAR{company}\\
+\BLOCK{endif}
+\BLOCK{if job_title}
+Re: \VAR{job_title}\\
+\BLOCK{endif}
+
+\vspace{10pt}
+
+\VAR{body}
+
+\vspace{20pt}
+
+Sincerely,\\
+\VAR{name}
+
+\end{document}

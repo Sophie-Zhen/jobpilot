@@ -1,0 +1,29 @@
+[project]
+name = "jobpilot"
+version = "0.1.0"
+description = "Personal AI job search copilot built with LangGraph."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "langgraph>=0.2.30",
+  "python-dotenv>=1.0.1",
+  "pydantic>=2.9.0",
+  "supabase>=2.9.0",
+  "jinja2>=3.1.0",
+  "streamlit>=1.38.0",
+  "pypdf>=4.0.0",
+]
+
+[project.scripts]
+jobpilot = "jobpilot.cli:main"
+jobpilot-ui = "jobpilot.app_runner:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

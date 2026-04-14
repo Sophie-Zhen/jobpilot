@@ -1,0 +1,106 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=0.6in]{geometry}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage[hidelinks]{hyperref}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
+\titlespacing{\section}{0pt}{8pt}{4pt}
+
+\begin{document}
+
+% Header
+\begin{center}
+    {\LARGE\bfseries \VAR{name}}\\[3pt]
+    \VAR{phone} \quad $\vert$ \quad \href{mailto:\VAR{raw_email}}{\VAR{email}}
+    \BLOCK{if linkedin} \quad $\vert$ \quad \href{https://\VAR{raw_linkedin}}{\VAR{linkedin}}\BLOCK{endif}
+    \BLOCK{if github} \quad $\vert$ \quad \href{https://\VAR{raw_github}}{\VAR{github}}\BLOCK{endif}\\
+    \VAR{location}
+    \BLOCK{if visa} \quad $\vert$ \quad \VAR{visa}\BLOCK{endif}
+\end{center}
+
+\vspace{2pt}
+
+% Professional Summary
+\BLOCK{if summary}
+\section*{Professional Summary}
+\VAR{summary}
+\BLOCK{endif}
+
+% Experience
+\BLOCK{if experience}
+\section*{Experience}
+\BLOCK{for exp in experience}
+\textbf{\VAR{exp.title}} \hfill \VAR{exp.dates}\\
+\VAR{exp.company} \hfill \VAR{exp.location}
+\begin{itemize}[leftmargin=1.5em, topsep=1pt, itemsep=1pt, parsep=0pt]
+\BLOCK{for bullet in exp.bullets}
+    \item \VAR{bullet}
+\BLOCK{endfor}
+\end{itemize}
+\vspace{2pt}
+\BLOCK{endfor}
+\BLOCK{endif}
+
+% Education
+\BLOCK{if education}
+\section*{Education}
+\BLOCK{for edu in education}
+\textbf{\VAR{edu.degree}} \hfill \VAR{edu.dates}\\
+\VAR{edu.institution} \hfill \VAR{edu.location}
+\BLOCK{if edu.details}
+\begin{itemize}[leftmargin=1.5em, topsep=1pt, itemsep=0pt, parsep=0pt]
+\BLOCK{for detail in edu.details}
+    \item \VAR{detail}
+\BLOCK{endfor}
+\end{itemize}
+\BLOCK{endif}
+\vspace{2pt}
+\BLOCK{endfor}
+\BLOCK{endif}
+
+% Projects
+\BLOCK{if projects}
+\section*{Projects}
+\BLOCK{for proj in projects}
+\textbf{\VAR{proj.title}}
+\BLOCK{if proj.tech} \quad $\vert$ \quad \textit{\VAR{proj.tech}}\BLOCK{endif}
+\BLOCK{if proj.dates} \hfill \VAR{proj.dates}\BLOCK{endif}
+\begin{itemize}[leftmargin=1.5em, topsep=1pt, itemsep=1pt, parsep=0pt]
+\BLOCK{for bullet in proj.bullets}
+    \item \VAR{bullet}
+\BLOCK{endfor}
+\end{itemize}
+\vspace{2pt}
+\BLOCK{endfor}
+\BLOCK{endif}
+
+% Skills
+\BLOCK{if skills}
+\section*{Skills}
+\BLOCK{if skills is mapping}
+\BLOCK{for category, items in skills.items()}
+\textbf{\VAR{category}:} \VAR{items | join(', ')}\\
+\BLOCK{endfor}
+\BLOCK{else}
+\VAR{skills | join(', ')}
+\BLOCK{endif}
+\BLOCK{endif}
+
+% Awards
+\BLOCK{if awards}
+\section*{Awards}
+\begin{itemize}[leftmargin=1.5em, topsep=1pt, itemsep=1pt, parsep=0pt]
+\BLOCK{for award in awards}
+    \item \VAR{award}
+\BLOCK{endfor}
+\end{itemize}
+\BLOCK{endif}
+
+\end{document}
