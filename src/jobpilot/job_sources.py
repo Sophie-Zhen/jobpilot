@@ -473,16 +473,50 @@ def merge_jobs(existing: list[dict], new: list[dict]) -> list[dict]:
     return merged
 
 
-def score_jobs(jobs: list[dict[str, Any]], profile_skills: set[str]) -> list[dict[str, Any]]:
-    """Score jobs by skill overlap with profile."""
+def score_jobs(jobs: list[dict[str, Any]], profile_skills: set[str],
+               preferred_keywords: list[str] | None = None,
+               target_roles: list[str] | None = None) -> list[dict[str, Any]]:
+    """Score jobs by skill overlap + keyword/role matching with profile."""
     scored = []
+    kw_set = {k.lower() for k in (preferred_keywords or [])}
+    role_set = {r.lower() for r in (target_roles or [])}
     for job in jobs:
+        # Skill overlap (0-1)
         job_skills = set(job.get("skills", []))
-        overlap = len(profile_skills.intersection(job_skills))
-        score = round(overlap / max(len(job_skills), 1), 2)
+        if job_skills:
+            skill_score = len(profile_skills.intersection(job_skills)) / len(job_skills)
+        else:
+            skill_score = 0.0
+
+        # Keyword match against title (0-1)
+        title_lower = (job.get("title") or "").lower()
+        if kw_set:
+            kw_hits = sum(1 for k in kw_set if k in title_lower)
+            kw_score = kw_hits / len(kw_set)
+        else:
+            kw_score = 0.0
+
+        # Role match — bonus if title closely matches a target role (0 or 0.3)
+        role_bonus = 0.3 if any(r in title_lower for r in role_set) else 0.0
+
+        # Weighted combination: skills matter most, keywords next, role bonus
+        score = round(min(skill_score * 0.5 + kw_score * 0.3 + role_bonus, 1.0), 2)
         scored.append({**job, "score": score})
     scored.sort(key=lambda x: x["score"], reverse=True)
     return scored
+
+
+def enrich_jobs_missing_skills(jobs: list[dict[str, Any]], profile: dict[str, Any]) -> list[dict[str, Any]]:
+    """For jobs with empty skills, extract from title + description using profile skill candidates."""
+    candidates = list(set(
+        [s.lower() for s in profile.get("skills", [])]
+        + [k.lower() for k in profile.get("preferred_keywords", [])]
+    ))
+    for job in jobs:
+        if not job.get("skills"):
+            text = f"{job.get('title', '')} {job.get('description', '')}"
+            job["skills"] = _extract_skills_from_text(text, candidates)
+    return jobs
 
 
 def scheduled_search(settings: Settings, profile: dict[str, Any]) -> dict[str, Any]:
@@ -508,7 +542,11 @@ def scheduled_search(settings: Settings, profile: dict[str, Any]) -> dict[str, A
 
     # Score
     profile_skills = set(s.lower() for s in profile.get("skills", []))
-    jobs = score_jobs(jobs, profile_skills)
+    jobs = score_jobs(
+        jobs, profile_skills,
+        preferred_keywords=profile.get("preferred_keywords"),
+        target_roles=profile.get("target_roles"),
+    )
 
     # Merge with existing pipeline
     existing = load_pipeline_jobs()

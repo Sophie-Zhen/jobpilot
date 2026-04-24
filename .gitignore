@@ -17,3 +17,10 @@ data/work/
 data/pipeline_jobs.json
 data/api_usage.json
 data/daily_results/
+data/jd_cache/
+data/applications.json
+data/dismissed_jobs.json
+
+# Generated PDF artifacts
+templates/cv.pdf
+templates/cover_letter.pdf
