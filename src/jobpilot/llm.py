@@ -343,6 +343,7 @@ def tailor_cv(
 
     prompt = (
         f"{level_instructions}\n\n"
+        f"{TONE_RULES}\n"
         "You are tailoring a CV for a specific job. The candidate's full CV data is already prepared.\n"
         "You only need to provide ADJUSTMENTS — do not rewrite the whole CV.\n"
         "Follow the role-level guidance above carefully.\n\n"
@@ -372,7 +373,7 @@ def tailor_cv(
     )
 
     try:
-        response = _call_claude(prompt, timeout=120)
+        response = _call_claude(prompt, timeout=600)
         adjustments = _parse_json_response(response)
     except Exception as exc:
         raise RuntimeError(f"CV tailoring failed: {exc}") from exc
@@ -391,6 +392,7 @@ def revise_cv(
     job_description = job.get("full_description", job.get("description", ""))
 
     prompt = (
+        f"{TONE_RULES}\n"
         "You have a tailored CV and cover letter. The user wants changes.\n"
         "Apply the feedback precisely. Do NOT change anything the user didn't ask about.\n"
         "Return a JSON object with two keys:\n"
@@ -404,7 +406,7 @@ def revise_cv(
         "Return ONLY valid JSON, no markdown fences."
     )
     try:
-        response = _call_claude(prompt, timeout=120)
+        response = _call_claude(prompt, timeout=600)
         data = _parse_json_response(response)
         return data["cv"], data["cover_letter"]
     except Exception as exc:
@@ -440,6 +442,26 @@ def generate_cover_letter(
         except Exception:
             pass
 
+    # Load winning cover letter examples (from jobs that got interviews)
+    winning_examples = ""
+    winning_dir = Path(__file__).resolve().parent.parent.parent / "data" / "winning_cover_letters"
+    if winning_dir.exists():
+        examples = []
+        for wf in sorted(winning_dir.glob("*.json"))[-2:]:
+            try:
+                wd = json.loads(wf.read_text(encoding="utf-8"))
+                examples.append(
+                    f"[Example from {wd.get('job_title', '')} at {wd.get('company', '')} "
+                    f"— this got an interview]\n{wd['cover_letter'][:500]}"
+                )
+            except Exception:
+                continue
+        if examples:
+            winning_examples = (
+                "\nHere are cover letters that previously got interviews. "
+                "Match their tone and approach:\n" + "\n---\n".join(examples) + "\n"
+            )
+
     level_note = {
         "graduate": "The candidate is a career changer applying for a graduate role. Emphasize learning, passion, and transferable skills. Don't overstate experience.",
         "junior": "The candidate is a career changer. Balance enthusiasm with professional maturity.",
@@ -448,6 +470,7 @@ def generate_cover_letter(
     }.get(role_level, "")
 
     prompt = (
+        f"{TONE_RULES}\n"
         "Write a professional cover letter for the following job application.\n"
         "Use specific examples from the candidate's stories to demonstrate fit.\n"
         "Keep it concise: 3-4 paragraphs, under 400 words.\n"
@@ -458,6 +481,7 @@ def generate_cover_letter(
         f"CANDIDATE: {profile.get('name', '')}, {profile.get('location', '')}\n"
         f"Key stories:\n{stories_text}\n"
         f"{selling_points}\n"
+        f"{winning_examples}"
         "Write the cover letter directly. Start with 'Dear Hiring Manager,' or similar.\n"
         f"{'End with a closing similar to: ' + closing_style if closing_style else ''}\n"
         "Do NOT include any preamble like 'Here is the cover letter:' or '---'.\n"
@@ -467,6 +491,23 @@ def generate_cover_letter(
         return _call_claude(prompt)
     except Exception as exc:
         raise RuntimeError(f"Cover letter generation failed: {exc}") from exc
+
+
+def summarize_jd(description: str, title: str = "", company: str = "") -> str:
+    """Generate a 1-2 sentence summary of a job description."""
+    if not description or len(description.strip()) < 50:
+        return ""
+    prompt = (
+        "Summarize this job posting in 1-2 sentences. Focus on: what the role does, "
+        "key technical requirements, and team/domain. Be specific, not generic.\n\n"
+        f"Title: {title}\nCompany: {company}\n"
+        f"Description:\n{description[:2000]}\n\n"
+        "Return ONLY the summary text, no labels or prefixes."
+    )
+    try:
+        return _call_claude(prompt, timeout=30).strip()
+    except Exception:
+        return ""
 
 
 def fetch_full_jd(job_url: str) -> str:
@@ -517,6 +558,22 @@ def classify_role_level(job: dict[str, Any]) -> str:
         return "mid"
 
 
+TONE_RULES = (
+    "WRITING TONE — CRITICAL RULES:\n"
+    "Write like a real person, not an AI. Recruiters flag AI-generated content.\n"
+    "BANNED WORDS/PHRASES (never use these): leverage, utilize, spearhead, delve, "
+    "cutting-edge, drive/driven, passionate, innovative, synergy, foster, "
+    "elevate, landscape, multifaceted, cornerstone, paradigm, robust, "
+    "transformative, holistic, seamless, pivotal, embark, underscores, "
+    "harnessing, navigating, intricate, nuanced, adept, endeavor.\n"
+    "INSTEAD USE: plain direct language. 'Built' not 'spearheaded'. "
+    "'Used' not 'leveraged'. 'Improved' not 'elevated'. 'Complex' not 'multifaceted'.\n"
+    "FORMATTING: Avoid overusing em dashes (—) and hyphens. Use short, clear sentences. "
+    "Vary sentence length. Don't start every bullet with an action verb.\n"
+    "COVER LETTER specifically: Write conversationally. Use 'I' naturally. "
+    "Show personality. Avoid corporate buzzwords. Sound like someone you'd want to talk to.\n"
+)
+
 ROLE_LEVEL_INSTRUCTIONS: dict[str, str] = {
     "graduate": (
         "ROLE LEVEL: Graduate/Entry-level. The candidate is a career changer "
@@ -558,7 +615,7 @@ ROLE_LEVEL_INSTRUCTIONS: dict[str, str] = {
         "- Emphasize: leadership, national-scale systems (Golden Tax Project), "
         "cross-functional stakeholder management, technical writing.\n"
         "- Frame tax bureau as 'government technology and data infrastructure'.\n"
-        "- Huawei and Walkers show cutting-edge AI work.\n"
+        "- Huawei and Walkers show recent, hands-on AI work.\n"
         "- Include 2-3 projects showing end-to-end delivery.\n"
         "- Highlight 'Workflow Automation' and 'Financial Auditing' skills.\n"
         "- Be honest about career transition — position as unique perspective.\n"
@@ -607,7 +664,9 @@ def evaluate_cv(
         "- ats_issues: list of formatting/keyword issues\n"
         "- strengths: list of what works well\n"
         "- suggestions: list of specific actionable improvements\n"
-        "- would_shortlist: true/false with reasoning\n"
+        "- would_shortlist: true/false with reasoning. "
+        "IMPORTANT: would_shortlist should be true ONLY if overall_score >= 7. "
+        "A score of 5-6 means NOT shortlisted.\n"
         "- gaps: an object analyzing missing skills/experience with two keys:\n"
         "    quick_fill: array of objects, each with:\n"
         "      - skill: name of the missing skill\n"
@@ -623,93 +682,89 @@ def evaluate_cv(
         "Return ONLY valid JSON, no markdown fences."
     )
     try:
-        response = _call_claude(prompt, timeout=120)
+        response = _call_claude(prompt, timeout=600)
         return _parse_json_response(response)
     except Exception as exc:
         raise RuntimeError(f"CV evaluation failed: {exc}") from exc
 
 
-def evaluate_and_suggest(
+def suggest_adjustments(
     cv_data: dict[str, Any],
     job: dict[str, Any],
-    cover_letter: str,
-    stories: list[Story],
+    evaluation: dict[str, Any],
     master: dict[str, Any],
     role_level: str | None = None,
+    missing_keywords: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Evaluate a CV AND suggest adjustment diffs in a single LLM call.
+    """Suggest adjustment diffs based on evaluation feedback. Returns ~30 lines, not a full CV.
 
-    Returns {evaluation: {...}, adjustments: {...} or null, cover_letter: str or null}.
-    Adjustments use the same schema as tailor_cv (bullet indices, project IDs, etc.)
-    so they can be applied programmatically via _apply_adjustments.
+    Uses the same adjustment schema as tailor_cv so results can be applied
+    programmatically via _apply_adjustments.
+
+    ``missing_keywords`` — objective ATS gaps (from jobpilot.ats). When passed,
+    the prompt explicitly prioritizes surfacing these keywords *if they are
+    truthfully supported by master_cv or stories*.
     """
-    job_description = job.get("full_description", job.get("description", ""))
     cv_summary = _compact_cv_summary(cv_data, master)
+    job_description = job.get("full_description", job.get("description", ""))
 
-    # Available bullets with text (abbreviated)
+    # Available options (abbreviated)
     exp_options = []
     for exp in master["experience"]:
-        exp_options.append(f"  [{exp['id']}] {exp['title']} at {exp['company']} ({exp['dates']})")
+        exp_options.append(f"  [{exp['id']}] {exp['title']} ({exp['dates']}): {len(exp['bullets'])} bullets")
         for i, bullet in enumerate(exp["bullets"]):
-            exp_options.append(f"    [{i}] {bullet[:100]}{'...' if len(bullet) > 100 else ''}")
+            exp_options.append(f"    [{i}] {bullet[:80]}...")
     exp_text = "\n".join(exp_options)
 
-    proj_options = "\n".join(
-        f"  [{p['id']}] {p['title']} ({p['tech']})"
-        for p in master["projects"]
-    )
+    proj_ids = [p["id"] for p in master["projects"]]
 
-    stories_text = "\n".join(
-        f"  - {s.title}{' [' + s.experience_id + ']' if s.experience_id else ''}: "
-        f"{s.result[:80]} (skills: {', '.join(s.skills[:5])})"
-        for s in stories
-    )
+    eval_summary = json.dumps({
+        "missing_critical": evaluation.get("keyword_coverage", {}).get("missing_critical", []),
+        "suggestions": evaluation.get("suggestions", [])[:5],
+        "red_flags": evaluation.get("red_flags", []),
+    })
 
     role_note = ""
     if role_level and role_level in ROLE_LEVEL_INSTRUCTIONS:
         role_note = ROLE_LEVEL_INSTRUCTIONS[role_level] + "\n\n"
 
+    ats_gaps_note = ""
+    if missing_keywords:
+        ats_gaps_note = (
+            "\nATS KEYWORD GAPS (objective — these are literally absent from the CV text):\n"
+            f"  {missing_keywords[:15]}\n"
+            "If any of these are truthfully supported by the candidate's master CV or stories "
+            "(skills list, experience bullets, project descriptions), prioritize selecting the "
+            "bullets/projects/skills that surface them. DO NOT invent content to cover a gap — "
+            "if master_cv genuinely doesn't support a keyword, leave it missing.\n"
+        )
+
     prompt = (
-        "You are an experienced technical recruiter who also optimizes CVs.\n\n"
-        "TASK: Evaluate this CV against the job. If it wouldn't be shortlisted, "
-        "suggest ADJUSTMENT DIFFS to improve it.\n\n"
-        "HONESTY RULES (override everything):\n"
-        "- You may ONLY select bullets/projects/skills that exist in the AVAILABLE OPTIONS below.\n"
-        "- NEVER invent experience, skills, or achievements.\n"
-        "- If a critical keyword from the job is not available in any option, leave it missing "
-        "and flag it in the gaps section.\n\n"
+        f"{TONE_RULES}\n"
+        "Suggest CV adjustments based on evaluator feedback.\n\n"
+        "RULES: Only select from AVAILABLE OPTIONS. Never invent content.\n\n"
         f"{role_note}"
-        f"JOB:\nTitle: {job.get('title', '')}\nCompany: {job.get('company', '')}\n"
-        f"Description: {job_description[:2000]}\n\n"
-        f"CURRENT CV SELECTIONS:\n{cv_summary}\n\n"
-        f"AVAILABLE EXPERIENCE (pick bullet indices from these):\n{exp_text}\n\n"
-        f"AVAILABLE PROJECTS:\n{proj_options}\n\n"
-        "AVAILABLE SKILLS BY CATEGORY:\n"
-        f"  Languages: {', '.join(master['skills']['languages'])}\n"
-        f"  ML & AI: {', '.join(master['skills']['ml_ai'])}\n"
-        f"  Tools & Frameworks: {', '.join(master['skills']['tools'])}\n"
-        f"  Other: {', '.join(master['skills']['other'])}\n\n"
-        f"AVAILABLE STORIES (for cover letter context):\n{stories_text}\n\n"
-        f"CURRENT COVER LETTER:\n{cover_letter[:1500]}\n\n"
-        "Return a JSON object with three keys:\n"
-        '1. "evaluation": {\n'
-        "   overall_score (1-10), keyword_coverage {matched, missing_critical, missing_nice_to_have},\n"
-        "   experience_fit (1-10 with explanation), red_flags [], ats_issues [],\n"
-        "   strengths [], suggestions [], would_shortlist (true/false with reasoning),\n"
-        "   gaps: {quick_fill: [{skill, reason_missing, how_to_fill, suggested_bullet}], "
-        "hard_gaps: [string]}\n"
-        "}\n"
-        '2. "adjustments": object with ONLY fields that need changing, or null if CV is already optimal.\n'
-        "   Fields: summary, include_fudan, experience_bullet_indices, project_ids, skills, include_awards.\n"
-        "   Same format as the CURRENT CV SELECTIONS — use bullet indices, project IDs, etc.\n"
-        '3. "cover_letter": revised cover letter text, or null if adequate.\n\n'
-        "Return ONLY valid JSON, no markdown fences."
+        f"JOB: {job.get('title', '')} at {job.get('company', '')}\n"
+        f"Description: {job_description[:1000]}\n\n"
+        f"CURRENT SELECTIONS:\n{cv_summary}\n\n"
+        f"AVAILABLE EXPERIENCE:\n{exp_text}\n\n"
+        f"AVAILABLE PROJECTS: {proj_ids}\n\n"
+        "AVAILABLE SKILLS: "
+        f"Languages={master['skills']['languages']}, "
+        f"ML_AI={master['skills']['ml_ai']}, "
+        f"Tools={master['skills']['tools']}, "
+        f"Other={master['skills']['other']}\n\n"
+        f"EVALUATOR FEEDBACK:\n{eval_summary}\n"
+        f"{ats_gaps_note}\n"
+        "Return a JSON object with ONLY the fields that need changing:\n"
+        "  summary, include_fudan, experience_bullet_indices, project_ids, skills, include_awards\n"
+        "Set fields to null if no change needed. Return ONLY valid JSON, no markdown fences."
     )
     try:
-        response = _call_claude(prompt, timeout=180)
+        response = _call_claude(prompt, timeout=600)
         return _parse_json_response(response)
     except Exception as exc:
-        raise RuntimeError(f"Evaluate and suggest failed: {exc}") from exc
+        raise RuntimeError(f"Adjustment suggestion failed: {exc}") from exc
 
 
 def auto_tailor_loop(
@@ -719,14 +774,29 @@ def auto_tailor_loop(
     role_level: str | None = None,
     max_iterations: int = 3,
     progress_cb: Any = None,
+    ats_threshold: float = 0.75,
 ) -> dict[str, Any]:
-    """Tailor → evaluate+suggest loop until would_shortlist=True or max_iterations.
+    """Tailor → score → adjust loop, driven by an objective ATS score.
 
-    Each iteration is ONE LLM call (evaluate_and_suggest) that returns both the
-    evaluation and adjustment diffs. Adjustments are applied programmatically to
-    master_cv.json, so fabrication is structurally impossible.
+    The loop converges when:
+      - ``ats_score.overall >= ats_threshold`` (the objective gate), OR
+      - the LLM recruiter scorer would shortlist AND ATS coverage isn't
+        catastrophically low (fallback path for cases the ATS simulator
+        under-weights), OR
+      - ``max_iterations`` reached, OR
+      - ATS score plateaus across an adjustment round.
+
+    ATS gaps (``missing_must``, top ``missing_nice``) are fed back into
+    ``suggest_adjustments`` so each iteration can target the actual gap.
+    Adjustments still apply to master_cv only, so fabrication is
+    structurally impossible.
     """
+    # Deferred import to avoid circular dependency (jobpilot.ats imports from
+    # this module for the JD Claude-normalization call).
+    from jobpilot.ats import ats_score as _ats_score
+
     master = _load_master_cv()
+    jd_text = job.get("full_description") or job.get("description", "")
 
     def _progress(msg: str) -> None:
         if progress_cb:
@@ -745,38 +815,104 @@ def auto_tailor_loop(
 
     iterations: list[dict[str, Any]] = []
     evaluation: dict[str, Any] = {}
+    ats_result = None
+    prev_ats = 0.0
 
     for i in range(max_iterations):
-        _progress(f"Iteration {i + 1}: evaluating and suggesting improvements...")
-        result = evaluate_and_suggest(cv, job, cl, stories, master, role_level)
-        evaluation = result.get("evaluation", {})
+        # Objective signal first — fast, cached, no recruiter-vibes.
+        _progress(f"Iteration {i + 1}: computing ATS score...")
+        try:
+            ats_result = _ats_score(
+                cv_data=cv,
+                jd_text=jd_text,
+                threshold=ats_threshold,
+                use_llm=True,
+            )
+        except Exception as exc:
+            _progress(f"ATS scoring failed ({exc}); skipping objective gate this iteration.")
+            ats_result = None
+
+        _progress(f"Iteration {i + 1}: running recruiter evaluation...")
+        evaluation = evaluate_cv(cv, job, cl)
+        llm_score = evaluation.get("overall_score", 0)
+        shortlisted = bool(evaluation.get("would_shortlist")) and llm_score >= 7
+        evaluation["would_shortlist"] = shortlisted
+        if ats_result is not None:
+            evaluation["ats_score"] = ats_result.to_dict()
+
+        ats_overall = ats_result.overall if ats_result is not None else 0.0
         iterations.append({
             "iter": i + 1,
-            "score": evaluation.get("overall_score", 0),
-            "shortlist": bool(evaluation.get("would_shortlist")),
+            "ats_score": ats_overall,
+            "llm_score": llm_score,
+            "shortlist": shortlisted,
+            "missing_must": ats_result.coverage.missing_must if ats_result else [],
         })
 
-        if evaluation.get("would_shortlist"):
-            _progress(f"Shortlisted at iteration {i + 1} (score: {evaluation.get('overall_score', '?')}/10)")
+        # Primary exit: objective ATS threshold met.
+        if ats_result is not None and ats_result.overall >= ats_threshold:
+            _progress(
+                f"ATS threshold met at iteration {i + 1} "
+                f"(ats={ats_result.overall:.2f} >= {ats_threshold})"
+            )
             break
 
+        # Secondary exit: LLM says shortlist AND ATS isn't catastrophic.
+        if shortlisted and ats_overall >= 0.5:
+            _progress(
+                f"Shortlisted at iteration {i + 1} "
+                f"(llm={llm_score}/10, ats={ats_overall:.2f})"
+            )
+            break
+
+        # Plateau: no ATS improvement after an adjustment round → stop wasting calls.
+        if i > 0 and ats_overall <= prev_ats:
+            _progress(
+                f"ATS score plateaued at {ats_overall:.2f} — stopping. "
+                "Gaps likely need master_cv or story updates to close."
+            )
+            break
+        prev_ats = ats_overall
+
         if i < max_iterations - 1:
-            _progress(f"Iteration {i + 1}: score {evaluation.get('overall_score', '?')}/10, applying adjustments...")
-            adjustments = result.get("adjustments")
-            if adjustments:
-                cv = _apply_adjustments(master, adjustments, current_cv=cv)
-                if role_level:
-                    cv["role_level"] = role_level
-            if result.get("cover_letter"):
-                cl = result["cover_letter"]
+            _progress(
+                f"Iteration {i + 1}: ats={ats_overall:.2f}, llm={llm_score}/10 — "
+                "suggesting adjustments targeting ATS gaps..."
+            )
+            missing_keywords: list[str] = []
+            if ats_result is not None:
+                missing_keywords = (
+                    list(ats_result.coverage.missing_must)
+                    + list(ats_result.coverage.missing_nice[:5])
+                )
+            try:
+                adjustments = suggest_adjustments(
+                    cv, job, evaluation, master, role_level,
+                    missing_keywords=missing_keywords or None,
+                )
+                if adjustments:
+                    cv = _apply_adjustments(master, adjustments, current_cv=cv)
+                    if role_level:
+                        cv["role_level"] = role_level
+            except Exception as exc:
+                _progress(f"Adjustment suggestion failed ({exc}), keeping current CV...")
+
+            _progress(f"Iteration {i + 1}: regenerating cover letter...")
+            try:
+                cl = generate_cover_letter(job, stories, profile, role_level=role_level)
+            except Exception:
+                pass  # keep existing cover letter
         else:
-            _progress(f"Max iterations reached (score: {evaluation.get('overall_score', '?')}/10)")
+            _progress(
+                f"Max iterations reached (ats={ats_overall:.2f}, llm={llm_score}/10)"
+            )
 
     return {
         "cv": cv,
         "cover_letter": cl,
         "evaluation": evaluation,
         "iterations": iterations,
+        "ats": ats_result.to_dict() if ats_result is not None else None,
     }
 
 
@@ -794,11 +930,28 @@ def search_jobs_web(
     profile = load_profile(load_settings())
     profile_candidates = profile.get("skills", []) + profile.get("preferred_keywords", [])
 
-    query_str = " OR ".join(f'"{q}"' for q in queries[:3])
+    from datetime import date as _date
+
+    today = _date.today().isoformat()
+    search_urls = "\n".join(
+        f"  - https://ie.linkedin.com/jobs/search?keywords={q.replace(' ', '%20')}&location={location.replace(' ', '%20')}&f_TPR=r604800"
+        for q in queries[:4]
+    )
     prompt = (
-        f"Search LinkedIn for: {query_str} in {location}, posted last {days} days.\n"
-        f"Use this URL: https://ie.linkedin.com/jobs/search?keywords={queries[0].replace(' ', '%20')}&location={location.replace(' ', '%20')}&f_TPR=r604800\n"
-        f"Return up to {limit} jobs as a JSON array: [{{title, company, location, url, source, posted, description}}]\n"
+        f"Search for jobs in {location}, posted in the last {days} days.\n"
+        f"Search ALL of these queries (not just the first one):\n"
+        + "\n".join(f"  - {q}" for q in queries[:4]) + "\n\n"
+        f"Use these LinkedIn search URLs to find jobs:\n{search_urls}\n\n"
+        "Also try other job boards if LinkedIn results are limited: Indeed Ireland, "
+        "IrishJobs.ie, Glassdoor Ireland.\n\n"
+        "Include junior, graduate, and mid-level roles — not just senior.\n"
+        "Include roles at large tech companies (Google, Meta, eBay, Stripe, etc.) "
+        "AND smaller companies/startups.\n\n"
+        f"Today's date is {today}. For the 'posted' field, convert relative times "
+        f"(like '2 hours ago', '3 days ago') to absolute dates (like '{today}'). "
+        f"If posted today or yesterday, use the actual date.\n\n"
+        f"Return up to {limit} jobs as a JSON array: "
+        "[{title, company, location, url, source, posted, description}]\n"
         "For description, include a brief summary of key requirements and skills mentioned.\n"
         "Return ONLY valid JSON, no markdown."
     )
@@ -815,6 +968,12 @@ def search_jobs_web(
             title = item.get("title", "")
             description = item.get("description", "")
             full_text = f"{title} {description}"
+            posted = item.get("posted", "")
+            # If Claude returned a relative time despite instructions, use today
+            if posted and not any(c.isdigit() and "-" in posted for c in [posted]):
+                # Looks like "2 hours ago" not "2026-04-13" — normalize
+                if "ago" in posted.lower() or "just" in posted.lower():
+                    posted = _date.today().isoformat()
             jobs.append({
                 "id": f"web_{hash(item.get('url', item.get('title', ''))) & 0xFFFFFFFF:08x}",
                 "title": title,
@@ -823,7 +982,7 @@ def search_jobs_web(
                 "description": description,
                 "url": item.get("url", ""),
                 "source": item.get("source", "web"),
-                "posted": item.get("posted", ""),
+                "posted": posted,
                 "skills": _extract_skills_from_text(full_text, profile_candidates),
             })
         return jobs
