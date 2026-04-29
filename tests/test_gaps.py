@@ -8,10 +8,12 @@ import pytest
 from jobpilot.gaps import (
     _normalize_hard_gap,
     _normalize_skill,
+    annotate_with_master_cv,
     is_gap_completed,
     load_gap_progress,
     save_gap_progress,
     scan_all_gaps,
+    scan_ats_gaps,
 )
 
 
@@ -134,3 +136,102 @@ def test_scan_skips_malformed_files():
         Path(tmp, "no_eval.json").write_text(json.dumps({"job": {}}))
         result = scan_all_gaps(Path(tmp))
         assert result == {"quick_fill": [], "hard_gaps": []}
+
+
+# ---------------------------------------------------------------------------
+# ATS-aware aggregation + master_cv annotation (new objective signal)
+# ---------------------------------------------------------------------------
+
+class TestAnnotateWithMasterCV:
+    MASTER = (
+        "Senior ML engineer with Python, FastAPI, and PyTorch experience. "
+        "Built RAG pipelines with LangGraph. Familiar with Docker and AWS. "
+        "Led automated testing efforts."
+    )
+
+    def test_keyword_present_returns_in_master(self):
+        assert annotate_with_master_cv("Python", self.MASTER) == "in_master"
+        assert annotate_with_master_cv("PyTorch", self.MASTER) == "in_master"
+        assert annotate_with_master_cv("FastAPI", self.MASTER) == "in_master"
+
+    def test_synonym_resolves_to_in_master(self):
+        # "AWS" → canonical "amazon web services" (alias group includes "aws")
+        assert annotate_with_master_cv("AWS", self.MASTER) == "in_master"
+
+    def test_partial_token_returns_partial(self):
+        # "Unit Testing" — neither full phrase nor stem "test" is in master,
+        # but "testing" IS in master. Token "testing" matches → partial.
+        assert annotate_with_master_cv("Unit Testing", self.MASTER) == "partial"
+
+    def test_completely_absent_returns_absent(self):
+        assert annotate_with_master_cv("Kubernetes", self.MASTER) == "absent"
+        assert annotate_with_master_cv("FHIR", self.MASTER) == "absent"
+
+    def test_empty_master_returns_absent(self):
+        assert annotate_with_master_cv("Python", "") == "absent"
+
+
+class TestScanATSGaps:
+    def _write_work_file(self, tmp: str, job_id: str, missing_must: list[str], missing_nice: list[str] = None) -> None:
+        work = {
+            "job": {"id": job_id, "title": f"Role {job_id}", "company": "Co"},
+            "evaluation": {
+                "ats_score": {
+                    "overall": 0.4,
+                    "coverage": {
+                        "missing_must": missing_must,
+                        "missing_nice": missing_nice or [],
+                        "matched_must": [],
+                        "matched_nice": [],
+                    },
+                }
+            },
+        }
+        Path(tmp, f"{job_id}.json").write_text(json.dumps(work))
+
+    def test_empty_dir_returns_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = scan_ats_gaps(Path(tmp), master_cv_text="")
+            assert result == {"missing_must": [], "missing_nice": []}
+
+    def test_skips_files_without_ats_score(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            # File with only old-style gaps (no ats_score) — should be skipped
+            Path(tmp, "old.json").write_text(json.dumps({
+                "job": {"id": "old"},
+                "evaluation": {"gaps": {"quick_fill": [{"skill": "Docker"}]}},
+            }))
+            result = scan_ats_gaps(Path(tmp), master_cv_text="")
+            assert result == {"missing_must": [], "missing_nice": []}
+
+    def test_aggregates_across_jobs_sorted_by_freq(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_work_file(tmp, "j1", ["Kubernetes", "FHIR"])
+            self._write_work_file(tmp, "j2", ["Kubernetes", "Java"])
+            self._write_work_file(tmp, "j3", ["Kubernetes"])
+            result = scan_ats_gaps(Path(tmp), master_cv_text="")
+            must = result["missing_must"]
+            assert must[0]["normalized"] == "kubernetes"
+            assert must[0]["frequency"] == 3
+            assert len(must[0]["jobs"]) == 3
+            # Java and FHIR each appear once
+            others = {e["normalized"] for e in must[1:]}
+            assert others == {"java", "fhir"}
+
+    def test_annotates_against_master_cv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_work_file(tmp, "j1", ["Python", "Kubernetes"])
+            master = "Python engineer with FastAPI experience."
+            result = scan_ats_gaps(Path(tmp), master_cv_text=master)
+            ann = {e["normalized"]: e["annotation"] for e in result["missing_must"]}
+            assert ann["python"] == "in_master"
+            assert ann["kubernetes"] == "absent"
+
+    def test_separates_must_and_nice(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_work_file(tmp, "j1", ["Java"], ["Spark"])
+            result = scan_ats_gaps(Path(tmp), master_cv_text="")
+            assert len(result["missing_must"]) == 1
+            assert result["missing_must"][0]["normalized"] == "java"
+            assert len(result["missing_nice"]) == 1
+            assert result["missing_nice"][0]["normalized"] == "spark"

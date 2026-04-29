@@ -418,6 +418,99 @@ def app_feedback(args: argparse.Namespace) -> None:
 # --- Main CLI ---
 
 
+def gaps_scan(args: argparse.Namespace) -> None:
+    """Aggregate ATS keyword gaps across data/work/*.json work files."""
+    from pathlib import Path
+    from jobpilot.gaps import (
+        scan_ats_gaps,
+        recompute_ats_for_stale,
+        _master_cv_searchable_text,
+    )
+
+    work_dir = Path("data/work")
+    if not work_dir.exists():
+        print(f"No work directory at {work_dir}. Run the pipeline on at least one job first.")
+        return
+
+    if args.recompute:
+        print("Recomputing ATS scores for stale work files (this calls Claude — may take several minutes)...")
+        n = recompute_ats_for_stale(
+            work_dir,
+            force=args.force,
+            progress_cb=lambda m: print(f"  {m}"),
+        )
+        print(f"Recomputed {n} file(s).\n")
+
+    master_cv_text = _master_cv_searchable_text()
+    result = scan_ats_gaps(work_dir, master_cv_text=master_cv_text)
+
+    must = result["missing_must"]
+    nice = result["missing_nice"]
+
+    if args.format == "json":
+        import json as _json
+        print(_json.dumps(result, indent=2, ensure_ascii=False))
+        return
+
+    if not must and not nice:
+        print("No ATS gap data found. Either no work files have an ats_score yet,")
+        print("or run with --recompute to backfill.")
+        return
+
+    _LABELS = {
+        "in_master": "✓ in master",
+        "partial":   "~ partial   ",
+        "absent":    "✗ absent    ",
+    }
+
+    def _row(entry: dict, total: int) -> str:
+        label = _LABELS.get(entry["annotation"], entry["annotation"])
+        return f"  {entry['frequency']:>2}/{total:<2}  {entry['skill']:<30s}  [{label}]"
+
+    # Determine total job-count for the denominator
+    all_job_ids: set[str] = set()
+    for e in must + nice:
+        for j in e["jobs"]:
+            all_job_ids.add(j["id"])
+    total_jobs = len(all_job_ids)
+
+    print(f"=== Top missing must-haves (across {total_jobs} jobs with ATS data) ===")
+    if must:
+        for entry in must[: args.top]:
+            print(_row(entry, total_jobs))
+    else:
+        print("  (none)")
+
+    print()
+    print(f"=== Top missing nice-to-haves ===")
+    if nice:
+        for entry in nice[: args.top]:
+            print(_row(entry, total_jobs))
+    else:
+        print("  (none)")
+
+    # Action summary: bucket by annotation
+    in_master = [e for e in must if e["annotation"] == "in_master"]
+    partial = [e for e in must if e["annotation"] == "partial"]
+    absent = [e for e in must if e["annotation"] == "absent"]
+    print()
+    print("=== Action summary (must-haves only) ===")
+    print(f"  ✓ in master ({len(in_master)}): already in master_cv text — fix tailoring to surface them")
+    print(f"  ~ partial   ({len(partial)}): a token appears — tighten bullets to use exact phrasing")
+    print(f"  ✗ absent    ({len(absent)}): not in master_cv — your judgment: truthful add OR real learning gap")
+
+    if in_master:
+        print()
+        print("Quickest wins (already in master, just need surfacing):")
+        for entry in in_master[:5]:
+            print(f"  - {entry['skill']} (missing in {entry['frequency']} jobs)")
+    if absent:
+        print()
+        print("Highest-frequency absent (consider adding from stories or filtering these roles):")
+        for entry in absent[:8]:
+            print(f"  - {entry['skill']} (missing in {entry['frequency']} jobs)")
+
+
 def search_jobs(args: argparse.Namespace) -> None:
     """Run a job search using API-based sources. Suitable for cron scheduling."""
     from jobpilot.config import load_settings
@@ -448,6 +541,27 @@ def main() -> None:
     # search
     search_parser = subparsers.add_parser("search", help="Search for jobs (API-based, suitable for cron)")
     search_parser.set_defaults(func=search_jobs)
+
+    # gaps
+    gaps_parser = subparsers.add_parser(
+        "gaps",
+        help="Aggregate ATS keyword gaps across data/work/*.json (master_cv audit input)",
+    )
+    gaps_parser.add_argument("--top", type=int, default=20, help="Show top N gaps (default 20)")
+    gaps_parser.add_argument(
+        "--recompute",
+        action="store_true",
+        help="Backfill evaluation.ats_score for stale work files first (calls Claude)",
+    )
+    gaps_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="With --recompute, recompute even files that already have ats_score",
+    )
+    gaps_parser.add_argument(
+        "--format", choices=["text", "json"], default="text", help="Output format",
+    )
+    gaps_parser.set_defaults(func=gaps_scan)
 
     # init-profile
     profile_parser = subparsers.add_parser("init-profile", help="Initialize profile file")
