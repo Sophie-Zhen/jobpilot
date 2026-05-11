@@ -529,6 +529,63 @@ def search_jobs(args: argparse.Namespace) -> None:
     print(f"  Query: {result.get('query', '?')} | {result.get('search_info', '')}")
 
 
+def discover(args: argparse.Namespace) -> None:
+    """Tier-1 ATS polling: hit every active company in target_companies.json,
+    filter to Dublin/Remote-EMEA, merge into pipeline_jobs.json."""
+    from jobpilot.discovery import discover_all
+    from jobpilot.job_sources import (
+        load_pipeline_jobs,
+        merge_jobs,
+        record_seen_jobs,
+        save_pipeline_jobs,
+    )
+
+    print("Polling Tier-1 ATS endpoints...")
+    jobs, stats = discover_all(progress_cb=lambda m: print(m))
+
+    print()
+    print(f"Polled {stats['companies_polled']} companies; "
+          f"{stats['total_jobs']} Dublin-eligible jobs; "
+          f"{len(stats['errors'])} errors")
+
+    if args.dry_run:
+        print("\n--dry-run: not writing to pipeline_jobs.json")
+        if args.format == "json":
+            import json as _json
+            print(_json.dumps({"stats": stats, "sample": jobs[:5]}, indent=2, ensure_ascii=False))
+        return
+
+    existing = load_pipeline_jobs()
+    before = len(existing)
+    merged = merge_jobs(existing, jobs)
+    save_pipeline_jobs(merged)
+    record_seen_jobs(jobs)
+
+    new_count = len(merged) - before
+    print(f"\nMerged into data/pipeline_jobs.json: {new_count} new, {len(merged)} total")
+
+    # Highlight new eng-flavored jobs (the ones likely worth reviewing today)
+    if new_count > 0:
+        new_ids = {j["id"] for j in merged[before:]} if before < len(merged) else set()
+        new_jobs = [j for j in jobs if j["id"] in new_ids]
+        import re as _re
+        eng_re = _re.compile(
+            r"\b(engineer|developer|scientist|researcher|ml|ai|nlp|llm|"
+            r"data|backend|frontend|fullstack|platform|infra|sre|architect)\b",
+            _re.IGNORECASE,
+        )
+        non_eng_re = _re.compile(
+            r"\b(account executive|customer success|bdr|sdr|recruiter|marketing|"
+            r"sales engineer|partner|renewal)\b",
+            _re.IGNORECASE,
+        )
+        eng_new = [j for j in new_jobs if eng_re.search(j["title"]) and not non_eng_re.search(j["title"])]
+        if eng_new:
+            print(f"\n{len(eng_new)} new eng-flavored Dublin jobs to review:")
+            for j in eng_new[:15]:
+                print(f"  - [{j['company']}] {j['title']}  →  {j['url']}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="JobPilot CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -541,6 +598,21 @@ def main() -> None:
     # search
     search_parser = subparsers.add_parser("search", help="Search for jobs (API-based, suitable for cron)")
     search_parser.set_defaults(func=search_jobs)
+
+    # discover — Tier-1 ATS polling (Greenhouse/Lever/Ashby for target_companies.json)
+    discover_parser = subparsers.add_parser(
+        "discover",
+        help="Poll Tier-1 ATS endpoints for new Dublin/Remote-EMEA jobs (target_companies.json)",
+    )
+    discover_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Show what would be discovered but don't write to pipeline_jobs.json",
+    )
+    discover_parser.add_argument(
+        "--format", choices=["text", "json"], default="text",
+        help="Dry-run output format (default: text)",
+    )
+    discover_parser.set_defaults(func=discover)
 
     # gaps
     gaps_parser = subparsers.add_parser(
