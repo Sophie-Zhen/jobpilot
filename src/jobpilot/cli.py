@@ -530,44 +530,92 @@ def search_jobs(args: argparse.Namespace) -> None:
 
 
 def discover(args: argparse.Namespace) -> None:
-    """Tier-1 ATS polling: hit every active company in target_companies.json,
-    filter to Dublin/Remote-EMEA, merge into pipeline_jobs.json."""
-    from jobpilot.discovery import discover_all
+    """Tier-1 (ATS poll) + Tier-2 (opencli LinkedIn) discovery.
+
+    Tier-1: hits every active Tier-1 company in target_companies.json,
+    filtered to Dublin/Remote-EMEA. Fast, free, deterministic.
+
+    Tier-2: opencli LinkedIn keyword search using profile.target_roles
+    with " Dublin" appended (opencli's --location flag is broken; we
+    encode location in the query and post-filter). Rate-limited with
+    random inter-call delays. Skipped if --skip-opencli.
+    """
+    from jobpilot.discovery import discover_all, discover_broad, opencli_available
     from jobpilot.job_sources import (
         load_pipeline_jobs,
         merge_jobs,
         record_seen_jobs,
         save_pipeline_jobs,
     )
+    from jobpilot.profile import load_profile
+    from jobpilot.config import load_settings
 
-    print("Polling Tier-1 ATS endpoints...")
-    jobs, stats = discover_all(progress_cb=lambda m: print(m))
+    all_jobs: list[dict] = []
+    all_stats: dict = {}
+
+    # ── Tier 1 — direct ATS polling ──
+    print("Tier 1: polling ATS endpoints...")
+    t1_jobs, t1_stats = discover_all(progress_cb=lambda m: print(m))
+    all_jobs.extend(t1_jobs)
+    all_stats["tier1"] = t1_stats
+    print(f"  Tier 1 total: {t1_stats['total_jobs']} Dublin-eligible across "
+          f"{t1_stats['companies_polled']} companies "
+          f"({len(t1_stats['errors'])} errors)")
+
+    # ── Tier 2 — opencli LinkedIn keyword search ──
+    if args.skip_opencli:
+        print("\nTier 2: SKIPPED (--skip-opencli)")
+        all_stats["tier2"] = {"skipped": True}
+    elif not opencli_available():
+        print("\nTier 2: SKIPPED (opencli not installed — run `npm install` in project root)")
+        all_stats["tier2"] = {"skipped": True, "reason": "opencli unavailable"}
+    else:
+        settings = load_settings()
+        profile = load_profile(settings)
+        target_roles = profile.get("target_roles", [])
+        if args.queries:
+            queries = [q.strip() for q in args.queries.split(",") if q.strip()]
+        else:
+            queries = [f"{role} Dublin" for role in target_roles]
+
+        if not queries:
+            print("\nTier 2: SKIPPED (no target_roles in profile)")
+        else:
+            print(f"\nTier 2: opencli LinkedIn search ({len(queries)} queries, budget={args.budget})")
+            t2_jobs, t2_stats = discover_broad(
+                queries,
+                limit_per_query=args.limit,
+                date_posted=args.date_posted,
+                budget=args.budget,
+                progress_cb=lambda m: print(m),
+            )
+            print(f"  Tier 2 total: {t2_stats['total_jobs']} Dublin-eligible "
+                  f"(daily usage: {t2_stats['daily_used']}/{t2_stats['daily_budget']})")
+            all_jobs.extend(t2_jobs)
+            all_stats["tier2"] = t2_stats
 
     print()
-    print(f"Polled {stats['companies_polled']} companies; "
-          f"{stats['total_jobs']} Dublin-eligible jobs; "
-          f"{len(stats['errors'])} errors")
+    print(f"=== Combined: {len(all_jobs)} Dublin-eligible jobs ===")
 
     if args.dry_run:
         print("\n--dry-run: not writing to pipeline_jobs.json")
         if args.format == "json":
             import json as _json
-            print(_json.dumps({"stats": stats, "sample": jobs[:5]}, indent=2, ensure_ascii=False))
+            print(_json.dumps({"stats": all_stats, "sample": all_jobs[:5]}, indent=2, ensure_ascii=False))
         return
 
     existing = load_pipeline_jobs()
     before = len(existing)
-    merged = merge_jobs(existing, jobs)
+    merged = merge_jobs(existing, all_jobs)
     save_pipeline_jobs(merged)
-    record_seen_jobs(jobs)
+    record_seen_jobs(all_jobs)
 
     new_count = len(merged) - before
     print(f"\nMerged into data/pipeline_jobs.json: {new_count} new, {len(merged)} total")
 
-    # Highlight new eng-flavored jobs (the ones likely worth reviewing today)
     if new_count > 0:
-        new_ids = {j["id"] for j in merged[before:]} if before < len(merged) else set()
-        new_jobs = [j for j in jobs if j["id"] in new_ids]
+        new_ids = {j["id"] for j in merged[before:]}
+        new_jobs = [j for j in all_jobs if j["id"] in new_ids]
         import re as _re
         eng_re = _re.compile(
             r"\b(engineer|developer|scientist|researcher|ml|ai|nlp|llm|"
@@ -575,15 +623,16 @@ def discover(args: argparse.Namespace) -> None:
             _re.IGNORECASE,
         )
         non_eng_re = _re.compile(
-            r"\b(account executive|customer success|bdr|sdr|recruiter|marketing|"
-            r"sales engineer|partner|renewal)\b",
+            r"\b(solutions engineer|account executive|customer success|bdr|sdr|"
+            r"recruiter|marketing|pre-sales|partner|renewal)\b",
             _re.IGNORECASE,
         )
         eng_new = [j for j in new_jobs if eng_re.search(j["title"]) and not non_eng_re.search(j["title"])]
         if eng_new:
             print(f"\n{len(eng_new)} new eng-flavored Dublin jobs to review:")
-            for j in eng_new[:15]:
-                print(f"  - [{j['company']}] {j['title']}  →  {j['url']}")
+            for j in eng_new[:20]:
+                src = "T1" if j["source"].startswith("ats:") else "T2"
+                print(f"  [{src}] [{j['company'][:24]:24}] {j['title'][:55]:55}  →  {j['url']}")
 
 
 def main() -> None:
@@ -599,10 +648,10 @@ def main() -> None:
     search_parser = subparsers.add_parser("search", help="Search for jobs (API-based, suitable for cron)")
     search_parser.set_defaults(func=search_jobs)
 
-    # discover — Tier-1 ATS polling (Greenhouse/Lever/Ashby for target_companies.json)
+    # discover — Tier-1 (direct ATS) + Tier-2 (opencli LinkedIn) discovery
     discover_parser = subparsers.add_parser(
         "discover",
-        help="Poll Tier-1 ATS endpoints for new Dublin/Remote-EMEA jobs (target_companies.json)",
+        help="Discover new Dublin jobs: Tier-1 (ATS poll) + Tier-2 (opencli LinkedIn)",
     )
     discover_parser.add_argument(
         "--dry-run", action="store_true",
@@ -611,6 +660,26 @@ def main() -> None:
     discover_parser.add_argument(
         "--format", choices=["text", "json"], default="text",
         help="Dry-run output format (default: text)",
+    )
+    discover_parser.add_argument(
+        "--skip-opencli", action="store_true",
+        help="Skip Tier-2 opencli LinkedIn search (Tier-1 only)",
+    )
+    discover_parser.add_argument(
+        "--queries", type=str, default="",
+        help="Override LinkedIn queries (comma-separated). Default: target_roles + ' Dublin'",
+    )
+    discover_parser.add_argument(
+        "--limit", type=int, default=25,
+        help="LinkedIn results per query (default: 25)",
+    )
+    discover_parser.add_argument(
+        "--date-posted", choices=["any", "month", "week", "24h"], default="week",
+        help="LinkedIn freshness filter (default: week)",
+    )
+    discover_parser.add_argument(
+        "--budget", type=int, default=15,
+        help="Max opencli LinkedIn calls per day (default: 15)",
     )
     discover_parser.set_defaults(func=discover)
 
