@@ -1,0 +1,26 @@
+{
+  "name": "jobpilot",
+  "version": "1.0.0",
+  "description": "Personal AI job-search copilot — Node side hosts opencli for LinkedIn/Indeed discovery (Tier 2 source). Python side does everything else.",
+  "private": true,
+  "scripts": {
+    "postinstall": "patch-package"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sophie-Zhen/jobpilot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Sophie-Zhen/jobpilot/issues"
+  },
+  "homepage": "https://github.com/Sophie-Zhen/jobpilot#readme",
+  "dependencies": {
+    "@jackwener/opencli": "^1.7.18"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.1"
+  }
+}

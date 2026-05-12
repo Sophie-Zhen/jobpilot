@@ -25,3 +25,8 @@ data/seen_jobs.json
 # Generated PDF artifacts
 templates/cv.pdf
 templates/cover_letter.pdf
+
+# Node + opencli artifacts (node_modules + downloaded extension are local;
+# package.json + lockfile are committed for reproducible install)
+node_modules/
+opencli-extension/

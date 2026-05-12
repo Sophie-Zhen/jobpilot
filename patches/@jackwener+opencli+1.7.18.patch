@@ -1,0 +1,41 @@
+diff --git a/node_modules/@jackwener/opencli/clis/linkedin/search.js b/node_modules/@jackwener/opencli/clis/linkedin/search.js
+index a072b19..94e2f85 100644
+--- a/node_modules/@jackwener/opencli/clis/linkedin/search.js
++++ b/node_modules/@jackwener/opencli/clis/linkedin/search.js
+@@ -141,10 +141,13 @@ function looksLinkedInAuthWallText(value) {
+     const text = String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+     if (!text)
+         return false;
+-    return /\b(sign in|log in|join linkedin)\b/.test(text) ||
+-        /linkedin\.com\/(login|checkpoint|authwall)/i.test(text) ||
+-        /\b(captcha|verification required)\b/.test(text) ||
+-        /(请登录|登录领英|安全验证)/.test(text);
++    // jobpilot local patch: original check matched "sign in"/"log in" anywhere
++    // in body text, but those words appear in signed-in jobs page footers and
++    // CTAs, causing false-positive AUTH_REQUIRED. Trust only URL redirect to
++    // login/checkpoint/authwall + explicit captcha/security-check signals.
++    return /linkedin\.com\/(login|checkpoint|authwall|uas\/login)/i.test(text) ||
++        /\b(captcha|verification required|security check)\b/.test(text) ||
++        /(安全验证|身份验证|请完成验证)/.test(text);
+ }
+ function buildLinkedInAuthProbeScript() {
+     return `(() => {
+@@ -158,7 +161,17 @@ function buildLinkedInAuthProbeScript() {
+ }
+ async function assertLinkedInAuthenticated(page, context) {
+     const authRequired = await page.evaluate(buildLinkedInAuthProbeScript());
+-    if (authRequired) {
++    // jobpilot local patch: page.evaluate returns {session, data} not raw boolean.
++    // Unwrap before testing.
++    let truthy;
++    if (typeof authRequired === 'boolean') {
++        truthy = authRequired;
++    } else if (authRequired && typeof authRequired === 'object') {
++        truthy = Boolean(authRequired.value ?? authRequired.result ?? authRequired.data);
++    } else {
++        truthy = Boolean(authRequired);
++    }
++    if (truthy) {
+         throw new AuthRequiredError(LINKEDIN_DOMAIN, `${context} requires an active signed-in LinkedIn browser session`);
+     }
+ }
