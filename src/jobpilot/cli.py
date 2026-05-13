@@ -576,7 +576,9 @@ def discover(args: argparse.Namespace) -> None:
         if args.queries:
             queries = [q.strip() for q in args.queries.split(",") if q.strip()]
         else:
-            queries = [f"{role} Dublin" for role in target_roles]
+            # Geo suffix: Ireland (not just Dublin) — Sophie's filter accepts
+            # any Irish location for now; tightening to Dublin-only is a future TODO.
+            queries = [f"{role} Ireland" for role in target_roles]
 
         if not queries:
             print("\nTier 2: SKIPPED (no target_roles in profile)")
@@ -678,8 +680,8 @@ def main() -> None:
         help="LinkedIn freshness filter (default: week)",
     )
     discover_parser.add_argument(
-        "--budget", type=int, default=15,
-        help="Max opencli LinkedIn calls per day (default: 15)",
+        "--budget", type=int, default=20,
+        help="Max opencli LinkedIn calls per day (default: 20)",
     )
     discover_parser.set_defaults(func=discover)
 

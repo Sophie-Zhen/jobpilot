@@ -39,7 +39,7 @@ _OPENCLI_BIN = _PROJECT_ROOT / "node_modules" / ".bin" / "opencli"
 _USAGE_PATH = Path("data/api_usage.json")
 _USAGE_KEY = "opencli"
 
-DAILY_BUDGET_DEFAULT = 15
+DAILY_BUDGET_DEFAULT = 20
 DELAY_MIN_SEC = 5
 DELAY_MAX_SEC = 30
 
