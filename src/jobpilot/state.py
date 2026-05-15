@@ -19,3 +19,4 @@ class JobPilotState(TypedDict, total=False):
     review_notes: str
     learning_plan: str
     messages: list[str]
+    variant: str  # one of 'grad' / 'tech_eng' / 'regtech' — controls CV framing

@@ -121,3 +121,69 @@ def render_cover_letter(data: dict[str, Any], output_path: Path) -> Path:
     template = _LATEX_ENV.get_template("cover_letter.tex")
     tex_content = template.render(**escaped)
     return _compile_latex(tex_content, output_path)
+
+
+def pdf_page_info(pdf_path: Path) -> dict[str, Any]:
+    """Return page count + per-page text length + last-page fill ratio.
+
+    last_page_fill_ratio = len(text on last page) / max(text lengths of earlier pages).
+    Proxy for 'is the last page substantially full?' — used to detect the half-page
+    problem (e.g. target 2 pages but only 5 lines on page 2).
+
+    Returns dict with keys: page_count, page_text_lengths, last_page_fill_ratio.
+    last_page_fill_ratio is None if the PDF has 0 pages, 1.0 if it has exactly 1 page.
+    """
+    from pypdf import PdfReader  # local import — pypdf is a test/runtime dep
+
+    reader = PdfReader(str(pdf_path))
+    text_lengths = [len(p.extract_text() or "") for p in reader.pages]
+    if not text_lengths:
+        return {"page_count": 0, "page_text_lengths": [], "last_page_fill_ratio": None}
+    if len(text_lengths) == 1:
+        return {"page_count": 1, "page_text_lengths": text_lengths, "last_page_fill_ratio": 1.0}
+    max_prior = max(text_lengths[:-1]) or 1
+    return {
+        "page_count": len(text_lengths),
+        "page_text_lengths": text_lengths,
+        "last_page_fill_ratio": text_lengths[-1] / max_prior,
+    }
+
+
+def check_page_count(
+    pdf_path: Path, target_pages: int, fill_threshold: float = 0.5
+) -> dict[str, Any]:
+    """Check a rendered CV against a target page count.
+
+    Returns dict with: page_count, target_pages, last_page_fill_ratio, meets_target, warning.
+    'warning' is None if everything looks fine, else a human-readable description.
+    """
+    info = pdf_page_info(pdf_path)
+    page_count = info["page_count"]
+    fill = info["last_page_fill_ratio"]
+
+    if page_count == target_pages and (page_count == 1 or (fill or 0) >= fill_threshold):
+        warning: str | None = None
+    elif page_count < target_pages:
+        warning = (
+            f"CV is {page_count} page(s) but target was {target_pages}. "
+            f"Consider adding more content (extra bullets, an additional project)."
+        )
+    elif page_count > target_pages:
+        warning = (
+            f"CV is {page_count} page(s) but target was {target_pages}. "
+            f"Consider trimming bullets or compressing the experience block."
+        )
+    else:
+        # page_count == target_pages but last-page fill is low — the 'half page' case.
+        warning = (
+            f"CV hits {page_count} pages but the last page is only ~"
+            f"{round((fill or 0) * 100)}% full. Consider trimming to {target_pages - 1} "
+            f"pages, or adding content to fill the last page."
+        )
+
+    return {
+        **info,
+        "target_pages": target_pages,
+        "meets_target": warning is None,
+        "warning": warning,
+    }

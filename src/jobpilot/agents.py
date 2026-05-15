@@ -153,6 +153,7 @@ def tailor_resume_node(state: dict[str, Any], settings: Settings) -> dict[str, A
         return {"tailored_resumes": [], "cover_letters": []}
 
     profile = state.get("profile", {})
+    variant = state.get("variant", "tech_eng")
     bank = StoryBank()
 
     tailored_resumes = []
@@ -166,8 +167,9 @@ def tailor_resume_node(state: dict[str, Any], settings: Settings) -> dict[str, A
             from jobpilot.llm import tailor_cv, generate_cover_letter, classify_role_level
 
             role_level = classify_role_level(job)
-            cv_data = tailor_cv(job, relevant_stories, profile, role_level=role_level)
+            cv_data = tailor_cv(job, relevant_stories, profile, role_level=role_level, variant=variant)
             cv_data["role_level"] = role_level
+            cv_data["variant"] = variant
             cv_data["job_id"] = job["id"]
             tailored_resumes.append(cv_data)
 

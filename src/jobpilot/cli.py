@@ -126,7 +126,7 @@ def run_flow(args: argparse.Namespace) -> None:
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
 
-    initial_state = {"search_query": ""}
+    initial_state = {"search_query": "", "variant": getattr(args, "variant", "tech_eng")}
     result = app.invoke(initial_state, config=config)
 
     while "__interrupt__" in result:
@@ -644,6 +644,13 @@ def main() -> None:
     # run
     run_parser = subparsers.add_parser("run", help="Run the job search pipeline")
     run_parser.add_argument("--scheduled", action="store_true", help="Scheduled mode (no interactive review)")
+    run_parser.add_argument(
+        "--variant",
+        choices=["grad", "tech_eng", "regtech"],
+        default="tech_eng",
+        help="CV framing variant (default: tech_eng). grad = graduate programs; "
+        "tech_eng = generic engineering; regtech = compliance/RegTech roles.",
+    )
     run_parser.set_defaults(func=run_flow)
 
     # search

@@ -321,15 +321,37 @@ def tailor_cv(
     stories: list[Story],
     profile: dict[str, Any],
     role_level: str | None = None,
+    variant: str = "tech_eng",
 ) -> dict[str, Any]:
-    """Generate a tailored CV by adjusting the master CV data for a specific job."""
-    master = _load_master_cv()
+    """Generate a tailored CV by adjusting the master CV data for a specific job.
 
-    if role_level is None:
+    variant selects the identity-framing lens applied to the prompt:
+    - 'grad'     — graduate-program targets; lead with MSc + projects
+    - 'tech_eng' — generic engineering targets; engineer-first (default)
+    - 'regtech'  — RegTech/compliance/legal-AI targets; tax-domain + AI dual-anchor
+    """
+    if variant not in FRAMING_RULES_BY_VARIANT:
+        raise ValueError(
+            f"Unknown variant {variant!r}; expected one of {VALID_VARIANTS}"
+        )
+
+    master = _load_master_cv()
+    framing_rules = FRAMING_RULES_BY_VARIANT[variant]
+
+    # For grad variant, role_level is forced to 'graduate' regardless of JD classification.
+    if variant == "grad":
+        role_level = "graduate"
+    elif role_level is None:
         role_level = classify_role_level(job)
 
     level_instructions = ROLE_LEVEL_INSTRUCTIONS.get(role_level, ROLE_LEVEL_INSTRUCTIONS["mid"])
     job_description = job.get("full_description", job.get("description", ""))
+
+    # Regtech variant restores Financial Auditing to the visible skills list — it is
+    # a positive signal for this audience and was stripped from master_cv defaults.
+    prompt_skills_other = list(master["skills"]["other"])
+    if variant == "regtech" and "Financial Auditing" not in prompt_skills_other:
+        prompt_skills_other.append("Financial Auditing")
 
     exp_summary = "\n".join(
         f"  [{e['id']}] {e['title']} at {e['company']} ({e['dates']}): {len(e['bullets'])} bullets"
@@ -339,13 +361,12 @@ def tailor_cv(
         f"  [{p['id']}] {p['title']} ({p['tech']})"
         for p in master["projects"]
     )
-    all_skills = master["skills"]["languages"] + master["skills"]["ml_ai"] + master["skills"]["tools"] + master["skills"]["other"]
 
     prompt = (
-        f"{FRAMING_RULES}\n"
+        f"{framing_rules}\n"
         f"{level_instructions}\n\n"
         f"{TONE_RULES}\n"
-        "You are tailoring a CV for a specific job. The candidate's full CV data is already prepared.\n"
+        f"You are tailoring a CV for a specific job (variant: {variant}). The candidate's full CV data is already prepared.\n"
         "You only need to provide ADJUSTMENTS — do not rewrite the whole CV.\n"
         "Follow the FRAMING_RULES and role-level guidance above carefully.\n\n"
         f"JOB:\nTitle: {job.get('title', '')}\nCompany: {job.get('company', '')}\n"
@@ -356,7 +377,7 @@ def tailor_cv(
         f"  Languages: {', '.join(master['skills']['languages'])}\n"
         f"  ML & AI: {', '.join(master['skills']['ml_ai'])}\n"
         f"  Tools & Frameworks: {', '.join(master['skills']['tools'])}\n"
-        f"  Other: {', '.join(master['skills']['other'])}\n\n"
+        f"  Other: {', '.join(prompt_skills_other)}\n\n"
         "Return a JSON object with these adjustments:\n"
         "- summary: professional summary tailored to THIS role (2-3 sentences). "
         "Follow the role-level guidance for framing.\n"
@@ -575,8 +596,8 @@ TONE_RULES = (
     "Show personality. Avoid corporate buzzwords. Sound like someone you'd want to talk to.\n"
 )
 
-FRAMING_RULES = (
-    "IDENTITY FRAMING — CRITICAL:\n"
+FRAMING_RULES_TECH_ENG = (
+    "IDENTITY FRAMING — CRITICAL (variant: tech_eng):\n"
     "The candidate is an NLP/ML Engineer with MSc CS (NLP) from DCU (First-Class, top 5%) "
     "and a portfolio of AI projects. The 13-year tax-administration background is DOMAIN "
     "CONTEXT supporting RegTech / compliance / financial AI applications — it is NOT the "
@@ -595,6 +616,59 @@ FRAMING_RULES = (
     "legal-reasoning pipeline'), not by brand-name tech stack (avoid 'LangGraph-orchestrated' "
     "etc. in the summary — those belong in skills / project sections).\n"
 )
+
+FRAMING_RULES_GRAD = (
+    "IDENTITY FRAMING — CRITICAL (variant: grad — graduate-program targets):\n"
+    "The candidate is a recent MSc Computer Science (NLP) graduate from DCU "
+    "(First-Class Honours, Dean's Honour List, top 5%) applying for graduate-scheme / "
+    "junior engineering roles. Treat as new graduate — DO NOT lead with the 13-year prior "
+    "career; it makes the candidate look overqualified and outside the target persona.\n"
+    "Rules:\n"
+    "- Open the summary with 'Recent First-Class MSc Computer Science (NLP) graduate' or "
+    "similar grad-anchored phrasing; lead with education + project portfolio.\n"
+    "- NEVER state 'X years of experience' in summary or anywhere prominent.\n"
+    "- Emphasize: learning speed, willingness to ship, hands-on projects, recent academic "
+    "performance, Huawei research as bridge to industry.\n"
+    "- Tax-administration experience may appear as 'analytical/professional background' "
+    "but stays in the trailing third of the CV with minimal bullets.\n"
+    "- Self-taught Python from 2018 — surface as evidence of self-driven learning, not as "
+    "professional experience claim.\n"
+)
+
+FRAMING_RULES_REGTECH = (
+    "IDENTITY FRAMING — CRITICAL (variant: regtech — RegTech / compliance / legal-AI targets):\n"
+    "The candidate combines 13 years of regulatory and tax-administration experience "
+    "(Shanghai Municipal Taxation Bureau — Golden Tax Project Phases III & IV, national "
+    "12366 hotline systems, financial audits) with First-Class MSc CS (NLP) from DCU and "
+    "a portfolio of NLP/LLM engineering projects. For this variant the domain depth is "
+    "the differentiator — engineering capability AMPLIFIES it.\n"
+    "Rules:\n"
+    "- Open the summary with the COMBINATION — 'RegTech / Compliance AI Engineer combining "
+    "13 years of tax-administration and regulatory experience with NLP and LLM engineering "
+    "capability' or similar dual-anchor phrasing.\n"
+    "- The 13-year regulatory background is the headline asset, NOT trailing context.\n"
+    "- Emphasize: Golden Tax Project (national-scale regulatory infrastructure), 12366 "
+    "hotline (national-scale data system), financial audit + anomaly detection.\n"
+    "- Pair domain depth with concrete AI capability — neuro-symbolic legal reasoning "
+    "with Walkers Global is the strongest bridge project, lead with it.\n"
+    "- Skills section MUST include 'Financial Auditing' (under Other) — it is a positive "
+    "signal for this variant.\n"
+    "- Tax bureau bullets: include all 4 — the regulatory depth is precisely the asset.\n"
+)
+
+FRAMING_RULES_BY_VARIANT: dict[str, str] = {
+    "grad": FRAMING_RULES_GRAD,
+    "tech_eng": FRAMING_RULES_TECH_ENG,
+    "regtech": FRAMING_RULES_REGTECH,
+}
+
+TARGET_PAGES_BY_VARIANT: dict[str, int] = {
+    "grad": 1,
+    "tech_eng": 2,
+    "regtech": 2,
+}
+
+VALID_VARIANTS = tuple(FRAMING_RULES_BY_VARIANT.keys())
 
 ROLE_LEVEL_INSTRUCTIONS: dict[str, str] = {
     "graduate": (
