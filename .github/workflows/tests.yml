@@ -36,5 +36,12 @@ jobs:
           pip install -e .
           pip install pytest pypdf
 
+      - name: Bootstrap personal data files from examples
+        run: |
+          cd data
+          for f in master_cv master_cover_letter stories profile target_companies; do
+            cp "${f}.example.json" "${f}.json"
+          done
+
       - name: Run pytest
         run: pytest tests/ -v
