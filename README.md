@@ -49,15 +49,31 @@ pip install -e .
 cp .env.example .env
 ```
 
-3) Run:
+3) Initialise your personal data files. The repo ships `*.example.json` templates
+   for CV, stories, profile, cover letter and target companies; the real files
+   live alongside them but are git-ignored (so your data stays private):
 
 ```bash
-jobpilot
+cd data
+for f in master_cv master_cover_letter stories profile target_companies; do
+  cp "$f.example.json" "$f.json"
+done
+cd ..
+```
+
+   Then edit each `data/<name>.json` with your own content. The example files
+   ship with the author's real career data as a working reference — replace it
+   with your own.
+
+4) Run:
+
+```bash
+jobpilot run
 ```
 
 You will see a review checkpoint and choose approved job IDs before the flow continues.
 
-4) Initialize and edit your real profile:
+5) (Optional) Initialize and edit your real profile:
 
 ```bash
 jobpilot init-profile

@@ -1,0 +1,249 @@
+{
+  "default_summaries": {
+    "grad": "Recent First-Class MSc Computer Science (NLP) graduate from DCU (Dean's Honour List, top 5%) with a portfolio of hands-on AI projects — a neuro-symbolic legal-reasoning pipeline, transformer fine-tuning for financial NER, and an autonomous job-search copilot. Strong analytical foundation from 13 years of prior professional experience; looking for graduate-level engineering roles where I can ship and learn fast.",
+    "tech_eng": "NLP/ML Engineer building practical AI systems — an autonomous job-search copilot, a neuro-symbolic legal-reasoning pipeline with verifiable symbolic logic, and transformer fine-tuning for financial NER. First-Class MSc CS (NLP) @DCU, top 5%; 13 years of prior experience architecting high-concurrency, national-scale tax data infrastructure.",
+    "regtech": "RegTech / Compliance AI Engineer combining 13 years of tax-administration and regulatory experience (Shanghai Municipal Taxation Bureau — Golden Tax Project Phases III & IV, national 12366 hotline systems) with NLP and LLM engineering capability. First-Class MSc CS (NLP) from DCU (top 5%); built a neuro-symbolic legal-reasoning pipeline with Walkers Global and a domain-NER fine-tuning project on financial entities."
+  },
+  "contact": {
+    "name": "Songhui Zhen",
+    "phone": "(+353) XXX XXX XXXX",
+    "email": "sophieineu@gmail.com",
+    "linkedin": "linkedin.com/in/songhui-zhen",
+    "github": "github.com/Sophie-Zhen",
+    "location": "Dublin, Ireland",
+    "visa": "Stamp 1G (Graduate Work Permit)"
+  },
+  "education": [
+    {
+      "degree": "M.Sc. Computer Science (Natural Language Processing)",
+      "institution": "Dublin City University",
+      "location": "Dublin, Ireland",
+      "dates": "Sept 2024 – Oct 2025",
+      "details": [
+        "First-Class Honours, Dean's Honour List (top 5%)",
+        "Coursework: Machine Learning, Deep Learning, LLMs, NLP, Data Science",
+        "Industry-linked projects with Quantexa, Trivago, aiXplain, and Walkers Global"
+      ]
+    },
+    {
+      "degree": "M.A. Public Policy & International Affairs (Part-time)",
+      "institution": "Fudan University",
+      "location": "Shanghai, China",
+      "dates": "2019 – 2022",
+      "details": [],
+      "optional": true
+    },
+    {
+      "degree": "B.Sc. Information Management & Information Systems | LL.B. in Law (Dual Degree)",
+      "institution": "Wuhan University",
+      "location": "Wuhan, China",
+      "dates": "2007 – 2011",
+      "details": [
+        "GPA: 3.48/4.0"
+      ]
+    }
+  ],
+  "experience": [
+    {
+      "id": "huawei",
+      "title": "Research Intern",
+      "company": "Huawei Ireland Research Centre",
+      "location": "Dublin, Ireland",
+      "dates": "Jul 2025 – Dec 2025",
+      "bullets": [
+        "Evaluated open-source autonomous networking AI frameworks, focusing on trustworthiness and explainability gaps that hinder large-scale deployment in the telecoms sector.",
+        "Conducted competitive analysis of agentic AI offerings from leading vendors (Datadog, Cisco and peers) to benchmark capabilities and inform Huawei's L4 autonomous-networking research direction.",
+        "Authored technical insight reports on SOTA AI techniques, translating complex architectures into risk assessments and strategic implications for both technical and business stakeholders.",
+        "Researched agentic AI and autonomous networking (L4) approaches, contributing to next-generation intelligent operations and maintenance systems."
+      ]
+    },
+    {
+      "id": "walkers",
+      "title": "Masters Practicum: Neuro-Symbolic Legal Reasoning",
+      "company": "DCU | Walkers Global",
+      "location": "Dublin, Ireland",
+      "dates": "Nov 2024 – Aug 2025",
+      "bullets": [
+        "Architected a multi-stage Neuro-Symbolic pipeline to automate conversion of US Tax Code (SARA) into executable Prolog predicates, achieving 64% end-to-end accuracy.",
+        "Developed a deterministic reasoning engine using Python, SWI-Prolog and LLMs (GPT-4o, Gemini 2.5 Pro) that replaces redundant LLM calls with a verified symbolic knowledge base.",
+        "Engineered an automated feedback loop with syntactic/semantic checks and execution-based evaluation, boosting syntactic correctness to over 90%.",
+        "Collaborated with Walkers Global on LLM-powered legal service automation research."
+      ]
+    },
+    {
+      "id": "tax_bureau",
+      "title": "Senior Specialist / Tax Officer",
+      "company": "Shanghai Municipal Taxation Bureau",
+      "location": "Shanghai, China",
+      "dates": "Aug 2011 – Aug 2024",
+      "bullets": [
+        "Self-taught Python (from 2018) and SQL while in role; applied both to build internal RPA tooling on JavaScript-driven government platforms, automating single-point data entry and field population across systems; later completed FreeCodeCamp's frontend curriculum (2022–2023).",
+        "Designed a SQL full-text retrieval system and built a structured Q&A knowledge base for the national 12366 tax-counseling hotline, organising operator queries with verified answers; recognised as top 1% performer.",
+        "Served on the national task force for China's Golden Tax Project (Phases III & IV), helping architect technical and data frameworks for the national tax-infrastructure rollout with high-concurrency reliability and scalability requirements.",
+        "Conducted risk-based financial audits on corporate transaction data, identifying fraud indicators and compliance anomalies; generated municipal revenue forecasts and anomaly flags."
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "id": "gliner",
+      "title": "GliNER Fine-tuning for Financial NER",
+      "tech": "PyTorch, FAISS, Scikit-learn, Argilla",
+      "dates": "2024 – 2025",
+      "bullets": [
+        "Fine-tuned GliNER LLMs for domain-specific NER in zero-shot and few-shot financial scenarios.",
+        "Built a data curation pipeline using FAISS + Sentence Transformers to select 1,000 high-quality financial records from 100k raw samples for training.",
+        "Built an end-to-end data labeling pipeline using Argilla for gold-standard evaluation."
+      ]
+    },
+    {
+      "id": "neuro_symbolic",
+      "title": "Neuro-Symbolic Pipeline for Statutory Reasoning",
+      "tech": "Python, Prolog, LLMs, Prompt Engineering",
+      "dates": "2024 – 2025",
+      "bullets": [
+        "Developed a framework to convert the US Tax Code into Prolog logic predicates using LLMs and Chain-of-Thought (CoT), achieving verifiable statutory reasoning.",
+        "Implemented a symbolic verification layer to reduce hallucinations and improve logical consistency.",
+        "Built automated validation with syntactic/semantic checks and self-verification mechanisms."
+      ]
+    },
+    {
+      "id": "ai_agent",
+      "title": "AI-Powered Movie Recommendation Agent",
+      "tech": "Python, LangGraph, aiXplain, API Integration",
+      "dates": "2025",
+      "bullets": [
+        "Built an autonomous agent on the aiXplain platform that recommends movies by orchestrating Movie DB, streaming availability, and translation APIs using a ReAct loop.",
+        "Implemented session-aware context management to maintain coherent multi-turn conversations across API calls."
+      ]
+    },
+    {
+      "id": "jobpilot",
+      "title": "JobPilot – AI Job Search Copilot",
+      "tech": "Python, LangGraph, Claude API, FastAPI, LaTeX",
+      "dates": "2026",
+      "bullets": [
+        "Built a personal AI copilot that searches jobs across LinkedIn and 9 Greenhouse/Lever/Ashby ATS sources, maintains a career story bank, and generates tailored CVs and cover letters as PDFs.",
+        "Implemented LLM-powered story matching with keyword fallback, FastAPI backend exposing pipeline data via REST endpoints, LangGraph 15-node orchestration (evolved from an earlier Greenhouse/Lever ATS-scanner v0), and an ATS keyword-gap scoring loop that drives CV re-tailoring.",
+        "Maintained 120+ unit and integration tests with GitHub Actions CI covering LaTeX rendering, story-bank CRUD, dedup filtering, and ATS discovery sources."
+      ]
+    },
+    {
+      "id": "my_assistant",
+      "title": "Personal AI Assistant (Telegram, Raspberry Pi)",
+      "tech": "Python, Anthropic SDK / Claude Code CLI, Telegram API, Docker",
+      "dates": "2026",
+      "bullets": [
+        "Built and deployed a 24/7 bilingual (English/Chinese) personal AI assistant on Raspberry Pi via Telegram — captures, queries, and updates todos in natural language with context-aware multi-turn conversation; daily morning digest push.",
+        "Engineered a pluggable LLMBackend abstraction (Claude Code CLI / Anthropic SDK) and plaintext-markdown storage (no database, version-controllable, hand-editable); ~970 LoC Python in Docker on Pi.",
+        "Maintained engineering discipline with 4 architecture decision records (ADRs), CHANGELOG, and FIELDNOTES tracking design decisions across multi-month daily-driven iteration."
+      ]
+    },
+    {
+      "id": "crypto",
+      "title": "Crypto Price & Volatility Modeling",
+      "tech": "Python, SQL, Tableau, Time-Series",
+      "dates": "2024 – 2025",
+      "bullets": [
+        "Built time-series features and evaluated predictive models for price direction/volatility with time-aware validation.",
+        "Used Tableau to visualise datasets and modelling results for feature selection and segment analysis."
+      ]
+    },
+    {
+      "id": "topic_modeling",
+      "title": "Topic Modeling on CORD-19",
+      "tech": "Python, LDA, BERTopic, PyTorch, LLMs, Bayesian Optimization",
+      "dates": "2024 – 2025",
+      "bullets": [
+        "Compared LDA vs BERTopic on the CORD-19 corpus, weighing coherence/efficiency tradeoffs; tuned α, β, and topic count via Bayesian Optimization.",
+        "Built an LLM-based topic-labelling pipeline using GPT-4o, Claude 3.5, and Llama 3.2; evaluated qualitative coherence with DeepSeek-R1 + cosine similarity.",
+        "Tracked compute footprint across model variants with CodeCarbon CO2 benchmarking.",
+        "Coordinated team work on dataset processing and experiment tracking."
+      ]
+    },
+    {
+      "id": "visa_checker",
+      "title": "Visa Appointment Checker Bot",
+      "tech": "Python, Selenium, Telegram API, SMTP",
+      "dates": "2025",
+      "bullets": [
+        "Built a monitoring bot that checks Schengen visa appointment availability on BLS Spain Global, sending real-time alerts via email and Telegram.",
+        "Implemented configurable scheduling, error handling, and deployable via systemd/cron for continuous monitoring."
+      ]
+    },
+    {
+      "id": "greetings_app",
+      "title": "Festival Greetings Generator (WeChat Mini Program)",
+      "tech": "WeChat WXML/WXSS, JavaScript, Python FastAPI, Deepseek/Llama-3",
+      "dates": "2025",
+      "bullets": [
+        "Built a full-stack WeChat Mini Program with Python FastAPI backend that generates personalized festival greetings using open-source LLMs (Deepseek, Llama-3).",
+        "Integrated LLM API for natural language generation with a mobile-first frontend serving real users."
+      ]
+    },
+    {
+      "id": "tweet_qa",
+      "title": "Multi-Model Question Answering on TweetQA",
+      "tech": "Python, PyTorch, BERT, LSTM, GPT, spaCy",
+      "dates": "2024 – 2025",
+      "bullets": [
+        "Implemented and compared 4 QA approaches on 10,692 tweet samples: rule-based baseline, LSTM, fine-tuned BERT, and GPT prompting; addressed an OOV problem affecting 23% of unique tokens.",
+        "Evaluated with BLEU-1, METEOR, and ROUGE-L metrics; fine-tuned BERT reached ROUGE-L 0.494, demonstrating progressive improvement from heuristics to transformer-based models."
+      ]
+    }
+  ],
+  "skills": {
+    "languages": [
+      "Python",
+      "SQL",
+      "Java",
+      "Prolog"
+    ],
+    "ml_ai": [
+      "PyTorch",
+      "Scikit-learn",
+      "Transformers",
+      "LLMs",
+      "OpenAI API",
+      "NLP",
+      "Deep Learning",
+      "RAG",
+      "Prompt Engineering",
+      "Embeddings",
+      "Vector Databases",
+      "FAISS"
+    ],
+    "tools": [
+      "Git",
+      "Docker",
+      "CI/CD",
+      "Linux",
+      "GCP",
+      "LangChain",
+      "LangGraph",
+      "MCP",
+      "Pandas",
+      "NumPy",
+      "spaCy",
+      "Argilla",
+      "Selenium",
+      "FastAPI",
+      "REST APIs",
+      "Streamlit"
+    ],
+    "other": [
+      "Workflow Automation",
+      "Unit Testing",
+      "Integration Testing",
+      "Data Wrangling",
+      "Technical Writing",
+      "Web Scraping",
+      "Full-Stack Development"
+    ]
+  },
+  "awards": [
+    "2nd Place, Coding Civilization Intervarsity Programming Competition, Maynooth University, 2025",
+    "Dean's Honour List (Top 5%), Dublin City University, 2025",
+    "Top 1% Performer, National 12366 Tax Counseling Hotline, Shanghai Municipal Taxation Bureau"
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "version": 2,
+  "updated_at": "2026-05-16",
+  "filter_scope": "Example template — replace with your own targets and locations.",
+  "clusters": {
+    "ai_pure_play": "LLM / foundation-model companies",
+    "tech_engineering": "Generic tech / engineering companies",
+    "fintech": "Financial-services tech",
+    "regtech": "Regulatory / compliance / AML / KYC tech"
+  },
+  "tier_meaning": {
+    "1": "Active poll — public ATS API supported",
+    "2": "Monitor only — non-public ATS or LinkedIn scraping"
+  },
+  "active": [
+    {
+      "name": "Anthropic",
+      "cluster": "ai_pure_play",
+      "tier": 1,
+      "ats": "greenhouse",
+      "ats_slug": "anthropic"
+    },
+    {
+      "name": "OpenAI",
+      "cluster": "ai_pure_play",
+      "tier": 1,
+      "ats": "ashby",
+      "ats_slug": "openai"
+    },
+    {
+      "name": "Stripe",
+      "cluster": "tech_engineering",
+      "tier": 1,
+      "ats": "greenhouse",
+      "ats_slug": "stripe"
+    },
+    {
+      "name": "Datadog",
+      "cluster": "tech_engineering",
+      "tier": 1,
+      "ats": "greenhouse",
+      "ats_slug": "datadog"
+    },
+    {
+      "name": "Intercom",
+      "cluster": "tech_engineering",
+      "tier": 1,
+      "ats": "greenhouse",
+      "ats_slug": "intercom"
+    },
+    {
+      "name": "Vanta",
+      "cluster": "regtech",
+      "tier": 1,
+      "ats": "ashby",
+      "ats_slug": "vanta"
+    }
+  ],
+  "cold": []
+}

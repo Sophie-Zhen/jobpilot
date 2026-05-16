@@ -22,6 +22,14 @@ data/applications.json
 data/dismissed_jobs.json
 data/seen_jobs.json
 audit_report.pdf
+
+# Personal data files (PII). Examples are committed; real files are local-only.
+# On first setup: cp data/<name>.example.json data/<name>.json  and edit.
+data/master_cv.json
+data/master_cover_letter.json
+data/stories.json
+data/target_companies.json
+data/profile.json
 # Generated PDF artifacts
 templates/cv.pdf
 templates/cover_letter.pdf

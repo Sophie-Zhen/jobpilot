@@ -1,0 +1,400 @@
+[
+  {
+    "id": "story_a8f325be",
+    "title": "Evaluated AI frameworks for autonomous networking at Huawei",
+    "situation": "Huawei Ireland Research Centre needed to assess open-source AI frameworks for autonomous networking use cases, evaluating their trustworthiness, explainability, and production readiness.",
+    "action": "Evaluated multiple open-source AI frameworks against criteria including trustworthiness, explainability, and readiness for production deployment in autonomous networking.",
+    "result": "Delivered structured assessments that informed framework selection decisions for Huawei's autonomous networking research.",
+    "tags": [
+      "research",
+      "AI evaluation",
+      "autonomous networking",
+      "internship"
+    ],
+    "skills": [
+      "AI frameworks",
+      "technical evaluation",
+      "autonomous networking",
+      "research methodology"
+    ],
+    "date_added": "2026-04-08",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": "huawei"
+  },
+  {
+    "id": "story_1662bb7c",
+    "title": "Wrote technical reports translating AI research for cross-functional stakeholders",
+    "situation": "Huawei's engineering and business stakeholders needed to understand complex AI techniques in actionable terms to make informed decisions.",
+    "action": "Wrote technical reports translating complex AI techniques into actionable assessments tailored for both engineering and business audiences.",
+    "result": "Produced reports that bridged the gap between AI research and business decision-making, enabling stakeholders to act on technical findings.",
+    "tags": [
+      "technical writing",
+      "cross-functional communication",
+      "AI",
+      "internship"
+    ],
+    "skills": [
+      "technical writing",
+      "stakeholder communication",
+      "AI",
+      "cross-functional collaboration"
+    ],
+    "date_added": "2026-04-08",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": "huawei"
+  },
+  {
+    "id": "story_0e59a64e",
+    "title": "Served on China's national Golden Tax Project task force",
+    "situation": "China's core tax compliance platform (Golden Tax Project) was undergoing major upgrades in Phases III and IV, requiring expert review of vendor proposals and technical documentation.",
+    "action": "Reviewed vendor proposals and technical documentation as part of the national task force, assessing solutions for the country's core tax compliance infrastructure.",
+    "result": "Contributed to the selection and design decisions for China's national tax compliance platform serving millions of taxpayers.",
+    "tags": [
+      "government",
+      "tax compliance",
+      "vendor evaluation",
+      "large-scale systems"
+    ],
+    "skills": [
+      "vendor evaluation",
+      "technical documentation review",
+      "compliance systems",
+      "tax administration"
+    ],
+    "date_added": "2026-04-08",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": "tax_bureau"
+  },
+  {
+    "id": "story_38443a0c",
+    "title": "Conducted financial audits identifying fraud indicators in corporate transaction data",
+    "situation": "Corporate entities required financial auditing to ensure tax compliance and detect potential fraud within transaction data at the Shanghai Municipal Taxation Bureau.",
+    "action": "Conducted financial audits on corporate entities using risk assessment techniques to identify fraud indicators and compliance anomalies in transaction data.",
+    "result": "Identified compliance anomalies and fraud indicators, protecting government revenue and ensuring corporate tax compliance.",
+    "tags": [
+      "fraud detection",
+      "financial auditing",
+      "risk assessment",
+      "compliance"
+    ],
+    "skills": [
+      "financial auditing",
+      "fraud detection",
+      "risk assessment",
+      "data analysis",
+      "compliance"
+    ],
+    "date_added": "2026-04-08",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": "tax_bureau"
+  },
+  {
+    "id": "story_c4896521",
+    "title": "Automated cross-system data entry with Python scripts",
+    "situation": "Tax administration workflows involved repetitive manual data entry across multiple systems, which was error-prone and time-consuming.",
+    "action": "Built Python scripts to automate repetitive cross-system data entry, replacing manual workflows.",
+    "result": "Reduced manual errors and freed up staff time by automating previously manual data entry processes.",
+    "tags": [
+      "automation",
+      "Python",
+      "workflow improvement",
+      "government IT"
+    ],
+    "skills": [
+      "Python",
+      "workflow automation",
+      "scripting",
+      "process improvement"
+    ],
+    "date_added": "2026-04-08",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": "tax_bureau"
+  },
+  {
+    "id": "story_214b4f4d",
+    "title": "Designed SQL-based retrieval system for national 12366 tax counseling hotline",
+    "situation": "China's national 12366 tax counseling hotline needed an efficient system for retrieving tax guidance information to serve callers.",
+    "action": "Designed a SQL-based retrieval system with relational schema and metadata indexing to support the hotline's information needs.",
+    "result": "Recognised as top 1% performer. Delivered a retrieval system that improved the hotline's ability to serve taxpayer inquiries efficiently.",
+    "tags": [
+      "database design",
+      "information retrieval",
+      "SQL",
+      "government IT",
+      "top performer"
+    ],
+    "skills": [
+      "SQL",
+      "relational schema design",
+      "metadata indexing",
+      "information retrieval"
+    ],
+    "date_added": "2026-04-08",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": "tax_bureau"
+  },
+  {
+    "id": "story_db18951c",
+    "title": "Built ML pipeline converting regulatory rules to executable Prolog logic (Masters practicum)",
+    "situation": "Walkers Global needed an automated system to convert complex regulatory rules (US Tax Code) into executable decision logic for compliance checking.",
+    "action": "Built an ML pipeline that converts complex regulatory rules into executable decision logic in Prolog, then added an automated validation loop with syntactic and execution-based checks.",
+    "result": "Achieved 64% accuracy on the SARA benchmark initially, then improved rule correctness to over 90% through the automated validation loop.",
+    "tags": [
+      "NLP",
+      "regulatory compliance",
+      "ML pipeline",
+      "masters project",
+      "LLMs"
+    ],
+    "skills": [
+      "Python",
+      "Prolog",
+      "LLMs",
+      "ML pipelines",
+      "regulatory compliance",
+      "automated validation"
+    ],
+    "date_added": "2026-04-08",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": "walkers"
+  },
+  {
+    "id": "story_7a9c2b1a",
+    "title": "Fine-tuned ML models for financial named entity recognition",
+    "situation": "Financial data required accurate entity extraction, but off-the-shelf models had limited precision in zero-shot and few-shot settings on domain-specific text.",
+    "action": "Fine-tuned ML models for entity extraction in financial data. Built a data processing pipeline using FAISS to filter 100K samples into a curated training subset and created a gold-standard evaluation benchmark with Argilla.",
+    "result": "Improved zero-shot and few-shot precision for financial entity extraction, with a reusable evaluation benchmark for future iterations.",
+    "tags": [
+      "NLP",
+      "financial NER",
+      "fine-tuning",
+      "data pipeline"
+    ],
+    "skills": [
+      "PyTorch",
+      "FAISS",
+      "Scikit-learn",
+      "Argilla",
+      "NER",
+      "data pipeline engineering"
+    ],
+    "date_added": "2026-04-08",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": "gliner"
+  },
+  {
+    "id": "story_060d244c",
+    "title": "Built an AI agent for automated multi-API workflows",
+    "situation": "Needed a reliable way to orchestrate automated workflows across multiple APIs and microservices.",
+    "action": "Built an autonomous agent integrating multiple APIs and microservices, implementing a Reason-Act-Observe loop for reliable orchestration across data sources.",
+    "result": "Delivered a working AI agent capable of autonomous multi-step task execution across heterogeneous data sources.",
+    "tags": [
+      "AI agents",
+      "automation",
+      "API integration",
+      "LangGraph"
+    ],
+    "skills": [
+      "Python",
+      "LangGraph",
+      "API integration",
+      "agent design",
+      "microservices orchestration"
+    ],
+    "date_added": "2026-04-08",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": "ai_agent"
+  },
+  {
+    "id": "story_74eaa298",
+    "title": "2nd Place at Coding Civilization Intervarsity Programming Competition",
+    "situation": "Competed in the Coding Civilization Intervarsity Programming Competition at Maynooth University in 2025.",
+    "action": "Participated and competed against teams from multiple universities in a programming competition.",
+    "result": "Won 2nd place.",
+    "tags": [
+      "competition",
+      "programming",
+      "award"
+    ],
+    "skills": [
+      "competitive programming",
+      "problem solving",
+      "algorithms"
+    ],
+    "date_added": "2026-04-08",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": null
+  },
+  {
+    "id": "story_656108d7",
+    "title": "Graduated MSc Computer Science with First-Class Honours, top 5%",
+    "situation": "Undertook a career change from 13 years in tax administration to pursue an MSc in Computer Science specialising in NLP at Dublin City University.",
+    "action": "Completed rigorous coursework in Machine Learning, Deep Learning, Data Science, and NLP, along with industry-linked projects with Quantexa, Trivago, aiXplain, and Walkers Global.",
+    "result": "Graduated with First-Class Honours, placed on the Dean's Honour List (top 5% of cohort).",
+    "tags": [
+      "education",
+      "career change",
+      "NLP",
+      "achievement"
+    ],
+    "skills": [
+      "machine learning",
+      "deep learning",
+      "NLP",
+      "data science"
+    ],
+    "date_added": "2026-04-08",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": null
+  },
+  {
+    "id": "story_e3f9323b",
+    "title": "Career pivot from zero coding to top 5% CS graduate at DCU",
+    "situation": "Arrived in Ireland in 2024 with no formal coding background, pursuing a Masters in Computer Science at Dublin City University while transitioning from a completely different career in government tax administration.",
+    "action": "Applied the rapid-learning discipline built over years of role rotations to systematically learn programming and computer science fundamentals from scratch. Maintained intense study pace throughout the programme.",
+    "result": "Graduated in the top 5% of the DCU Masters of Computer Science cohort, demonstrating exceptional ability to acquire deep technical skills in a compressed timeframe.",
+    "tags": [
+      "education",
+      "career-pivot",
+      "achievement"
+    ],
+    "skills": [
+      "computer science",
+      "self-directed learning",
+      "resilience",
+      "adaptability"
+    ],
+    "date_added": "2026-04-09",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": null
+  },
+  {
+    "id": "story_473e83e6",
+    "title": "LLM-powered legal service automation with Walkers Global",
+    "situation": "Legal services remain expensive and inaccessible to ordinary people. Walkers Global, a major law firm, sought to explore how technology could lower this barrier.",
+    "action": "Collaborated with Walkers Global on research into using automation and large language models to make legal services reusable and more easily accessible to the general public.",
+    "result": "Developed research outcomes that demonstrated how LLM-based automation can lower the barrier to legal services for normal people, making professional legal guidance more reusable and affordable.",
+    "tags": [
+      "NLP",
+      "LLM",
+      "legal-tech",
+      "research",
+      "collaboration"
+    ],
+    "skills": [
+      "LLM application",
+      "NLP",
+      "automation",
+      "research",
+      "stakeholder collaboration"
+    ],
+    "date_added": "2026-04-09",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": "walkers"
+  },
+  {
+    "id": "story_9f5143b0",
+    "title": "Agentic AI research at Huawei Ireland IOM Lab",
+    "situation": "Huawei Ireland Research Center's IOM lab needed researchers to investigate the latest progress in autonomous networking (AN L4) and the emerging field of agentic AI.",
+    "action": "Worked at the Huawei Ireland Research Center IOM lab conducting research on state-of-the-art progress in AN L4 and agentic AI, which was beginning to bloom in 2025 and became mainstream by 2026.",
+    "result": "Contributed to cutting-edge research at the intersection of autonomous networking and agentic AI, positioning at the frontier of a technology wave that became industry mainstream.",
+    "tags": [
+      "agentic-AI",
+      "research",
+      "autonomous-networking",
+      "Huawei"
+    ],
+    "skills": [
+      "agentic AI",
+      "autonomous networking",
+      "AI research",
+      "L4 autonomy"
+    ],
+    "date_added": "2026-04-09",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": "huawei"
+  },
+  {
+    "id": "story_5ba6c5df",
+    "title": "Rapid mastery across 8+ government roles through continuous rotation",
+    "situation": "Hired as intended IT staff at Shanghai Pudong Tax Bureau, but the organisation rotated all civil servants through diverse departments regardless of specialisation.",
+    "action": "Embraced each rotation fully — tax service, tax management, cross-border tax, internal audit, 12366 hotline service, and accounting — consistently mastering each new role's requirements within 2 weeks to 1 month through disciplined self-study.",
+    "result": "Developed exceptional adaptability, rapid learning ability, and skill in working with diverse groups of people. Built a cross-functional understanding of government tax operations that few specialists possess.",
+    "tags": [
+      "adaptability",
+      "government",
+      "rapid-learning",
+      "cross-functional"
+    ],
+    "skills": [
+      "rapid learning",
+      "cross-functional collaboration",
+      "tax management",
+      "auditing",
+      "customer service",
+      "accounting",
+      "adaptability"
+    ],
+    "date_added": "2026-04-09",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": "tax_bureau"
+  },
+  {
+    "id": "story_92635333",
+    "title": "Overcame systemic constraints to make an international career restart",
+    "situation": "Bound by a 5-year minimum service contract as a civil servant, plus cultural expectations requiring parental and spousal permission to leave a stable government position in China.",
+    "action": "Persisted in the desire to return to education and pivot careers despite years of institutional and familial constraints. Eventually secured support from spouse and family, then made the bold decision to relocate to Ireland for a completely fresh start in 2024.",
+    "result": "Successfully transitioned from a decade-plus government career in China to pursuing cutting-edge AI and NLP work in Ireland, demonstrating extraordinary determination and the courage to start over.",
+    "tags": [
+      "career-pivot",
+      "perseverance",
+      "international-move"
+    ],
+    "skills": [
+      "determination",
+      "cross-cultural adaptability",
+      "risk-taking",
+      "long-term planning"
+    ],
+    "date_added": "2026-04-09",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": null
+  },
+  {
+    "id": "story_c2bc8254",
+    "title": "Competitive selection into Shanghai civil service",
+    "situation": "After graduating from Wuhan University in 2007, needed to establish a career path and met family expectations to pursue a stable government position.",
+    "action": "Prepared for and passed the highly competitive Chinese civil servant entrance examination, securing a position at the tax bureau in Pudong, Shanghai.",
+    "result": "Successfully entered the civil service through one of China's most competitive selection processes, demonstrating strong examination and analytical skills.",
+    "tags": [
+      "education",
+      "government",
+      "competitive-selection"
+    ],
+    "skills": [
+      "analytical reasoning",
+      "examination preparation",
+      "discipline"
+    ],
+    "date_added": "2026-04-09",
+    "date_occurred": "",
+    "source": "import",
+    "experience_id": null
+  }
+]

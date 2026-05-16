@@ -1,0 +1,46 @@
+{
+  "target_roles": [
+    "Software Engineer",
+    "Machine Learning Engineer",
+    "AI Engineer",
+    "Data Scientist"
+  ],
+  "locations": [
+    "Ireland"
+  ],
+  "country": "Ireland",
+  "experience_years": 13,
+  "preferred_keywords": [
+    "llm",
+    "nlp",
+    "ai agent",
+    "python",
+    "machine learning",
+    "deep learning",
+    "automation",
+    "rag",
+    "transformers",
+    "pytorch",
+    "software engineer"
+  ],
+  "excluded_keywords": [
+    "senior manager",
+    "director",
+    "VP",
+    "Java Developer",
+    "Java Engineer",
+    "Java Backend",
+    "Core Java",
+    "Spring Boot",
+    "Kotlin",
+    "Scala Developer",
+    "Scala Engineer",
+    ".NET Developer",
+    "C# Developer",
+    "Golang",
+    "PHP Developer",
+    "Ruby on Rails"
+  ],
+  "daily_limit": 5,
+  "job_source": "web"
+}
