@@ -21,7 +21,7 @@ data/jd_cache/
 data/applications.json
 data/dismissed_jobs.json
 data/seen_jobs.json
-
+audit_report.pdf
 # Generated PDF artifacts
 templates/cv.pdf
 templates/cover_letter.pdf
