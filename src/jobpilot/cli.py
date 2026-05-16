@@ -637,6 +637,139 @@ def discover(args: argparse.Namespace) -> None:
                 print(f"  [{src}] [{j['company'][:24]:24}] {j['title'][:55]:55}  →  {j['url']}")
 
 
+def tailor_one_job(args: argparse.Namespace) -> None:
+    """Tailor CV + cover letter for a single job from pipeline_jobs.json.
+
+    Per-job manual workflow — bypasses the LangGraph batch pipeline so the
+    discovery + scoring steps don't re-run. Outputs PDFs to
+    output/{job_id}/cv_{variant}.pdf + cover_letter_{variant}.pdf, plus a
+    state JSON for inspection / re-render later. Runs check_page_count on
+    the CV and prints any half-page / overflow warning.
+    """
+    from jobpilot.llm import (
+        TARGET_PAGES_BY_VARIANT,
+        classify_role_level,
+        fetch_full_jd,
+        generate_cover_letter,
+        tailor_cv,
+    )
+    from jobpilot.profile import load_profile
+    from jobpilot.renderer import check_page_count, render_cover_letter, render_cv
+
+    settings = load_settings()
+    profile = load_profile(settings)
+    bank = StoryBank()
+
+    pipeline_path = Path("data/pipeline_jobs.json")
+    if not pipeline_path.exists():
+        print(f"No pipeline jobs at {pipeline_path}. Run `jobpilot discover` first.")
+        sys.exit(1)
+    jobs = json.loads(pipeline_path.read_text(encoding="utf-8"))
+
+    job: dict | None = None
+    if args.job_id:
+        for j in jobs:
+            if j.get("id") == args.job_id:
+                job = j
+                break
+        if job is None:
+            print(f"No job with id={args.job_id!r} in pipeline ({len(jobs)} jobs total).")
+            sys.exit(1)
+    else:
+        idx = args.job_index
+        if idx is None or idx < 0 or idx >= len(jobs):
+            print(f"--job-index must be in 0..{len(jobs) - 1}")
+            sys.exit(1)
+        job = jobs[idx]
+
+    job_id = job.get("id", "unknown")
+    company = job.get("company", "?")
+    title = job.get("title", "?")
+    variant = args.variant
+
+    print(f"Tailoring for: [{company}] {title}")
+    print(f"  job_id : {job_id}")
+    print(f"  variant: {variant}")
+    print(f"  url    : {job.get('url', '?')}")
+    print()
+
+    # T2 LinkedIn jobs often arrive with a 200-300 char snippet; fetch the full
+    # JD so the tailor LLM has real content to work with. T1 ATS jobs already
+    # carry ~4k chars from the source API and are skipped.
+    description = job.get("full_description") or job.get("description", "")
+    if len(description) < 500 and job.get("url"):
+        print(f"Description is short ({len(description)} chars). Fetching full JD ...")
+        try:
+            full = fetch_full_jd(job["url"])
+            if full and len(full) > len(description):
+                job["full_description"] = full
+                description = full
+                print(f"  fetched: {len(full)} chars")
+        except Exception as exc:
+            print(f"  fetch failed: {exc}; proceeding with short description")
+
+    job_text = f"{title} {description}"
+    relevant_stories = bank.find_similar(job_text, top_k=8)
+
+    role_level = "graduate" if variant == "grad" else classify_role_level(job)
+
+    print(f"Calling tailor_cv (LLM, ~30-60s)  [role_level={role_level}] ...")
+    cv_data = tailor_cv(job, relevant_stories, profile, role_level=role_level, variant=variant)
+    cv_data["role_level"] = role_level
+    cv_data["variant"] = variant
+    cv_data["job_id"] = job_id
+
+    print("Calling generate_cover_letter (LLM, ~30-60s) ...")
+    cover_letter_text = generate_cover_letter(job, relevant_stories, profile, role_level=role_level)
+
+    output_dir = Path(settings.output_dir) / job_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    state_path = output_dir / f"state_{variant}.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "job": job,
+                "variant": variant,
+                "role_level": role_level,
+                "cv_data": cv_data,
+                "cover_letter": cover_letter_text,
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    print("\nRendering CV PDF ...")
+    cv_path = render_cv(cv_data, output_dir / f"cv_{variant}.pdf")
+
+    print("Rendering cover letter PDF ...")
+    cl_data = {
+        "name": cv_data.get("name", ""),
+        "date": date.today().strftime("%B %d, %Y"),
+        "company": company,
+        "job_title": title,
+        "body": cover_letter_text,
+    }
+    cl_path = render_cover_letter(cl_data, output_dir / f"cover_letter_{variant}.pdf")
+
+    target = TARGET_PAGES_BY_VARIANT[variant]
+    info = check_page_count(cv_path, target_pages=target)
+    fill_pct = round((info["last_page_fill_ratio"] or 0) * 100)
+    print(f"\nPage check (variant={variant}, target={target}):")
+    print(f"  pages: {info['page_count']}    last-page fill: {fill_pct}%")
+    if info["warning"]:
+        print(f"  WARN: {info['warning']}")
+    else:
+        print("  OK — meets target")
+
+    print("\nReady to review:")
+    print(f"  open {cv_path}")
+    print(f"  open {cl_path}")
+    print(f"  state: {state_path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="JobPilot CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -656,6 +789,24 @@ def main() -> None:
     # search
     search_parser = subparsers.add_parser("search", help="Search for jobs (API-based, suitable for cron)")
     search_parser.set_defaults(func=search_jobs)
+
+    # tailor — per-job manual workflow (one job + one variant -> PDFs)
+    tailor_parser = subparsers.add_parser(
+        "tailor",
+        help="Tailor CV + cover letter for ONE job (from pipeline_jobs.json) and render PDFs",
+    )
+    tailor_group = tailor_parser.add_mutually_exclusive_group(required=True)
+    tailor_group.add_argument("--job-id", type=str, help="Job ID from pipeline_jobs.json")
+    tailor_group.add_argument(
+        "--job-index", type=int, help="0-based index in pipeline_jobs.json"
+    )
+    tailor_parser.add_argument(
+        "--variant",
+        choices=["grad", "tech_eng", "regtech"],
+        default="tech_eng",
+        help="CV framing variant (default: tech_eng)",
+    )
+    tailor_parser.set_defaults(func=tailor_one_job)
 
     # discover — Tier-1 (direct ATS) + Tier-2 (opencli LinkedIn) discovery
     discover_parser = subparsers.add_parser(
