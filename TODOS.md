@@ -1,22 +1,25 @@
 # JobPilot — TODOs
 
-_Last updated: 2026-05-13_
+_Last updated: 2026-05-17_
 
 ## Current Focus
-Discovery layer live: `jobpilot discover` polls 9 Tier-1 ATS endpoints + 4 LinkedIn keyword searches via opencli, all Ireland-filtered. ~200 jobs in pipeline + daily refresh. Next is master_cv data-gap audit (using the gaps tool against the new pipeline) to lift ATS scores, then build the review/notify side: Telegram daily digest + Streamlit-lite Review Queue.
+End-to-end shipped: 3-variant CV tailor (grad/tech_eng/regtech) + FRAMING_RULES identity layer + per-job `jobpilot tailor` subcommand + page-count check. First 2 real submissions today: Tines (tech_eng) + Bending Spoons (grad). PII separated from tracking, git history scrubbed via filter-repo, GitHub repo recreated and ready to flip public. Next: README polish for portfolio audience, monitor 2-week callback window, then Pillar 3 outreach module.
 
 ## Open Questions / Blockers
-- ATS threshold 0.75 still a guess — interim 0.60 while master_cv is being fixed; real calibration once ≥15 submissions have outcomes
+- ATS threshold 0.75 still a guess — was lowered to 0.60 as interim; unclear if reverted. Verify and calibrate once ≥15 submissions have outcomes (currently 2)
 - Decide whether to migrate from `claude -p` CLI to Anthropic SDK before doing prompt caching (REDESIGN week-1 #5)
-- Split hunting time: ~60% deep-outreach flywheel (Compliance Orchestrator + warm intros), ~40% jobpilot volume — currently skewed to volume
+- Split hunting time: deep-outreach flywheel (Compliance Orchestrator + warm intros) vs jobpilot volume. Currently 100% volume (2 apps shipped today, 0 outreach). Recalibrate after 2-week callback window.
 - LangGraph teardown deferred — watch whether the 15-node orchestrator becomes maintenance drag before its payoff
 
 ## Todo
 
-### Master_cv data-gap audit (highest leverage now)
-- [ ] Run `jobpilot gaps --recompute` against current `data/work/*.json`, then audit `data/master_cv.json` + stories against the output. For each must-have keyword in ≥30% of jobs AND truthfully supported by actual experience (MCP/RAG/CI-CD/testing/FastAPI/LangGraph), add to master skills and rewrite bullets to surface the keyword. Goal: every existing work file's ATS score moves up by ≥0.10 after re-tailor.
-- [ ] Add `Java`, `Spring Boot`, `Kotlin`, `Scala`, `Go`, `.NET` to `profile.json` `excluded_keywords` — gaps output + market research confirmed these are noise sources (target_roles narrowing already done in `7e0401e`)
-- [ ] Drop `ats_threshold` from 0.75 → 0.60 as interim during master_cv work (revert once audit done)
+### Open-source polish (portfolio readiness)
+- [ ] Polish README for portfolio audience — current README still says "currently mocked" / "deterministic text summary" / RapidAPI fallback chain, which doesn't reflect the LLM-powered v2 (Claude Code, 3-variant tailor, FRAMING_RULES, end-to-end `jobpilot tailor`). Recruiter-readable rewrite.
+- [ ] Rename `is_dublin_eligible()` → `is_ireland_eligible()` in `discovery/ats_sources.py` — function name now lies (filter is Ireland-wide per `memory/feedback_location_scope.md`).
+- [ ] (low) Add `jobpilot apply <job_id> --variant X --url Y` CLI subcommand for manual application logging — currently writing directly to `applications.json`.
+
+### Master_cv data-gap audit (residual)
+- [ ] Verify whether `ats_threshold` is currently 0.75 (default) or 0.60 (interim) — revert to 0.75 once confirmed audit/enrichment is sufficient (L1+L2+L3 + my_assistant + old-CV recovery shipped this week).
 
 ### Pillar 3 — Network outreach (the missing channel)
 - [ ] Implement outreach module: for each P0 job, generate LinkedIn search URL (hiring manager + recruiter at $company) + DCU alumni search URL + 3-line DM template (JD hook + career-change bridge + referral ask). Push to Telegram for manual copy-send. Hard red line: never auto-send DMs.
@@ -26,7 +29,6 @@ Discovery layer live: `jobpilot discover` polls 9 Tier-1 ATS endpoints + 4 Linke
 - [ ] Streamlit-lite: trim to 3 tabs (Master CV editor, Story Bank editor, Review Queue with P0/P1/P2 columns). Delete the auto-tailor / evaluate UI — those become CLI-only.
 
 ### Discovery layer follow-ups
-- [ ] Tighten `is_dublin_eligible()` in `discovery/ats_sources.py` — currently "ireland" alone accepts Waterford/Cork/Galway on-site postings. Should only accept "dublin" or ("ireland" + "remote"). Deferred 2026-05-13 — Sophie's current priority is interview volume, geography secondary.
 - [ ] Merge `~/code/dublin_ai_jobs_bot` into `src/jobpilot/discovery/` — port the IrishJobs.ie scraper for non-LinkedIn coverage. Currently a separate cron pipeline.
 - [ ] Niche-gold P0 scoring: jobs at `target_companies.json` companies with `niche_gold: true` auto-promoted to P0 regardless of keyword overlap
 
