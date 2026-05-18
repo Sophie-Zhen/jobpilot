@@ -130,7 +130,12 @@ def _run_opencli(args: list[str], timeout: int = 120) -> tuple[int, str, str]:
 
 def _normalize_linkedin_result(j: dict[str, Any]) -> dict[str, Any] | None:
     """Convert one opencli linkedin search result to jobpilot Job schema.
-    Returns None if it fails the Dublin filter."""
+    Returns None if it fails the Dublin filter.
+
+    When the search was run with --details=true, opencli returns the full
+    job description. The field name is not documented, so we try several
+    plausible aliases and keep the first non-empty one.
+    """
     location = j.get("location", "")
     eligible, reason = is_dublin_eligible(location)
     if not eligible:
@@ -147,12 +152,20 @@ def _normalize_linkedin_result(j: dict[str, Any]) -> dict[str, Any] | None:
     if not url_id:
         url_id = _slugify(f"{company}-{title}")
 
+    # Try every plausible field name from opencli --details output.
+    description = ""
+    for key in ("description", "jobDescription", "body", "content", "details", "fullDescription"):
+        v = j.get(key)
+        if isinstance(v, str) and v.strip():
+            description = v.strip()
+            break
+
     return {
         "id": f"opencli_linkedin_{url_id}",
         "title": title,
         "company": company,
         "location": location,
-        "description": "",  # opencli search doesn't return descriptions; --details fetches separately
+        "description": description,
         "skills": [],
         "url": url,
         "source": "opencli:linkedin:search",
@@ -167,14 +180,18 @@ def linkedin_search(
     query: str,
     limit: int = 25,
     date_posted: str = "week",
-    timeout: int = 120,
+    timeout: int = 240,
     budget: int = DAILY_BUDGET_DEFAULT,
+    with_details: bool = True,
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Run one opencli LinkedIn search, return (jobs, error).
 
     Records the call in data/api_usage.json BEFORE invoking (so a hung
     subprocess still counts — fail loud rather than silently retry).
     ``date_posted`` ∈ {"any", "month", "week", "24h"}.
+    ``with_details=True`` adds ``--details`` so each result carries the
+    full JD body (slower per result, but eliminates the post-hoc
+    fetch_full_jd round-trip later).
     """
     if not opencli_available():
         return [], "opencli not installed locally — run `npm install` in project root"
@@ -182,13 +199,13 @@ def linkedin_search(
         return [], f"daily budget exhausted ({get_daily_usage()}/{budget})"
 
     _record_call()
-    rc, stdout, stderr = _run_opencli(
-        ["linkedin", "search", query,
-         "--limit", str(limit),
-         "--date-posted", date_posted,
-         "-f", "json"],
-        timeout=timeout,
-    )
+    args = ["linkedin", "search", query,
+            "--limit", str(limit),
+            "--date-posted", date_posted]
+    if with_details:
+        args += ["--details", "true"]
+    args += ["-f", "json"]
+    rc, stdout, stderr = _run_opencli(args, timeout=timeout)
     if rc != 0:
         msg = (stderr or stdout or "unknown")[:300].strip()
         return [], f"opencli rc={rc}: {msg}"

@@ -637,6 +637,261 @@ def discover(args: argparse.Namespace) -> None:
                 print(f"  [{src}] [{j['company'][:24]:24}] {j['title'][:55]:55}  →  {j['url']}")
 
 
+_ENG_TITLE_RE = None  # lazy compiled
+_NON_ENG_TITLE_RE = None
+
+
+def _eng_title_filters():
+    """Compile (and cache) the eng / non-eng title regexes used by discover + digest."""
+    global _ENG_TITLE_RE, _NON_ENG_TITLE_RE
+    if _ENG_TITLE_RE is None:
+        import re as _re
+        _ENG_TITLE_RE = _re.compile(
+            r"\b(engineer|developer|scientist|researcher|ml|ai|nlp|llm|"
+            r"data|backend|frontend|fullstack|platform|infra|sre|architect)\b",
+            _re.IGNORECASE,
+        )
+        _NON_ENG_TITLE_RE = _re.compile(
+            r"\b(solutions engineer|account executive|customer success|bdr|sdr|"
+            r"recruiter|marketing|pre-sales|partner|renewal)\b",
+            _re.IGNORECASE,
+        )
+    return _ENG_TITLE_RE, _NON_ENG_TITLE_RE
+
+
+def _is_eng_flavored(title: str) -> bool:
+    eng, non_eng = _eng_title_filters()
+    return bool(eng.search(title)) and not non_eng.search(title)
+
+
+_RELATIVE_AGE_RE = None
+
+
+def _job_age_days(job: dict) -> int | None:
+    """Resolve a job's age in days, or None if no parseable date.
+
+    Day resolution; <24h returns 0. Handles the three formats currently in
+    pipeline_jobs.json:
+      - T1 ATS: ``posted_at`` ISO timestamp ("2026-02-17T16:43:23+00:00")
+      - opencli: ``posted_at`` ISO date  ("2026-05-16")
+      - web_:    ``posted`` relative string ("3 hours ago", "1 day ago")
+    """
+    from datetime import date as _date, datetime as _dt
+    import re as _re
+    global _RELATIVE_AGE_RE
+    if _RELATIVE_AGE_RE is None:
+        _RELATIVE_AGE_RE = _re.compile(
+            r"(\d+)\s+(hour|day|week|month|year)s?\s+ago",
+            _re.IGNORECASE,
+        )
+
+    today = _date.today()
+    pa = job.get("posted_at") or ""
+    if pa:
+        try:
+            if "T" in pa:
+                dt = _dt.fromisoformat(pa.replace("Z", "+00:00")).date()
+            else:
+                dt = _date.fromisoformat(pa[:10])
+            return max(0, (today - dt).days)
+        except (ValueError, TypeError):
+            pass
+
+    # Relative "posted" string ("3 hours ago"). This is frozen at scrape
+    # time, so we must anchor it to date_found, NOT to today — otherwise
+    # an old web_ job from April with posted="1 hour ago" looks fresh now.
+    posted = job.get("posted") or ""
+    if posted:
+        low = posted.lower()
+        offset_days: int | None = None
+        if any(t in low for t in ("just", "moment", "now")):
+            offset_days = 0
+        else:
+            m = _RELATIVE_AGE_RE.search(posted)
+            if m:
+                n = int(m.group(1))
+                unit = m.group(2).lower()
+                offset_days = {"hour": 0, "day": n, "week": n * 7,
+                               "month": n * 30, "year": n * 365}.get(unit)
+        if offset_days is not None:
+            anchor_str = job.get("date_found") or ""
+            if anchor_str:
+                try:
+                    from datetime import timedelta as _td
+                    anchor = _date.fromisoformat(anchor_str[:10])
+                    real = anchor - _td(days=offset_days)
+                    return max(0, (today - real).days)
+                except (ValueError, TypeError):
+                    pass
+            # No anchor: only trust if scrape was recent (best-effort).
+            # Without an anchor we can't know, so be conservative → drop.
+            return None
+    return None
+
+
+def _format_age(days: int | None) -> str:
+    if days is None:
+        return "age?"
+    if days == 0:
+        return "today"
+    if days == 1:
+        return "1d ago"
+    return f"{days}d ago"
+
+
+def _load_digested(path: Path) -> dict:
+    if not path.exists():
+        return {"sent_ids": [], "last_run": None}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data.setdefault("sent_ids", [])
+        data.setdefault("last_run", None)
+        return data
+    except Exception:
+        return {"sent_ids": [], "last_run": None}
+
+
+def _save_digested(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _format_job_digest(job: dict) -> str:
+    """Format one job as a Telegram-friendly plain-text card.
+
+    Plain text (no markdown) — Telegram auto-linkifies the URL and we
+    avoid escape collisions on URLs containing underscores.
+    """
+    company = job.get("company", "?")
+    title = job.get("title", "?")
+    location = job.get("location", "")
+    skills = job.get("skills", []) or []
+    summary = job.get("jd_summary") or job.get("description", "") or ""
+    if len(summary) > 350:
+        summary = summary[:347].rstrip() + "..."
+
+    age = _job_age_days(job)
+    age_str = _format_age(age)
+    header_prefix = "[NEW] " if age == 0 else ""
+
+    lines = [f"{header_prefix}[{company}] {title}"]
+    meta_parts = [p for p in [location, f"Posted {age_str}"] if p]
+    lines.append(" · ".join(meta_parts))
+    if skills:
+        lines.append(f"Skills: {', '.join(skills[:8])}")
+    if summary:
+        lines.append("")
+        lines.append(summary)
+    lines.append("")
+    lines.append(f"URL: {job.get('url', '?')}")
+    lines.append(f"ID:  {job.get('id', '?')}")
+    return "\n".join(lines)
+
+
+def digest(args: argparse.Namespace) -> None:
+    """Push today's top eng-flavored, un-digested, un-applied jobs to Telegram.
+
+    Filters pipeline_jobs.json by:
+      - eng-flavored title (same regex as discover)
+      - job_id not in applications.json (skip already-applied)
+      - job_id not in data/digested.json (skip already-sent today/earlier)
+
+    Sends one Telegram message per job (one card per job sets up Phase 2
+    inline buttons). Tracks sent ids in data/digested.json. Use --reset
+    to clear that file for testing.
+    """
+    from datetime import datetime
+    from jobpilot.notify import send_telegram
+
+    pipeline_path = Path("data/pipeline_jobs.json")
+    if not pipeline_path.exists():
+        print(f"No pipeline jobs at {pipeline_path}. Run `jobpilot discover` first.")
+        return
+    jobs = json.loads(pipeline_path.read_text(encoding="utf-8"))
+
+    apps_path = Path("data/applications.json")
+    applied_ids: set[str] = set()
+    if apps_path.exists():
+        try:
+            apps = json.loads(apps_path.read_text(encoding="utf-8"))
+            applied_ids = {a.get("job_id") for a in apps if a.get("job_id")}
+        except Exception:
+            pass
+
+    digested_path = Path("data/digested.json")
+    if args.reset:
+        if digested_path.exists():
+            digested_path.unlink()
+        print("Cleared data/digested.json.")
+        if not args.send:
+            return
+    digested = _load_digested(digested_path)
+    sent_ids: set[str] = set(digested["sent_ids"])
+
+    max_age = args.max_age_days
+    eligible: list[tuple[int, dict]] = []
+    skipped_no_date = 0
+    skipped_too_old = 0
+    for j in jobs:
+        if not j.get("id"):
+            continue
+        if j["id"] in applied_ids or j["id"] in sent_ids:
+            continue
+        if not _is_eng_flavored(j.get("title", "")):
+            continue
+        age = _job_age_days(j)
+        if age is None:
+            skipped_no_date += 1
+            continue
+        if age > max_age:
+            skipped_too_old += 1
+            continue
+        eligible.append((age, j))
+
+    # Newest first (smallest age first). Tiebreak by reverse pipeline order
+    # to keep determinism (most recently appended wins).
+    eligible.sort(key=lambda t: t[0])
+    picks = [j for _, j in eligible[: args.limit]]
+    print(f"Filter: age≤{max_age}d  "
+          f"(skipped {skipped_no_date} undateable, {skipped_too_old} too old)")
+
+    if not picks:
+        print("Nothing to digest: 0 eligible jobs after filters.")
+        print(f"  pipeline={len(jobs)}  applied={len(applied_ids)}  "
+              f"digested={len(sent_ids)}")
+        return
+
+    print(f"Eligible: {len(eligible)}  Sending: {len(picks)}  "
+          f"(limit={args.limit})\n")
+
+    if args.dry_run:
+        for i, job in enumerate(picks, 1):
+            print(f"--- card {i}/{len(picks)} ---")
+            print(_format_job_digest(job))
+            print()
+        print("--dry-run: nothing sent to Telegram.")
+        return
+
+    sent_now = 0
+    failed = 0
+    for job in picks:
+        message = _format_job_digest(job)
+        ok = send_telegram(message)
+        if ok:
+            sent_now += 1
+            digested["sent_ids"].append(job["id"])
+            print(f"  ✓ [{job.get('company','?')[:24]:24}] {job.get('title','?')[:50]}")
+        else:
+            failed += 1
+            print(f"  ✗ [{job.get('company','?')[:24]:24}] {job.get('title','?')[:50]}  (send failed)")
+
+    digested["last_run"] = datetime.now().isoformat(timespec="seconds")
+    _save_digested(digested_path, digested)
+    print(f"\nDigest done: {sent_now} sent, {failed} failed.")
+    if failed and not os.getenv("TELEGRAM_BOT_TOKEN"):
+        print("Hint: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set in env.")
+
+
 def tailor_one_job(args: argparse.Namespace) -> None:
     """Tailor CV + cover letter for a single job from pipeline_jobs.json.
 
@@ -842,6 +1097,33 @@ def main() -> None:
         help="Max opencli LinkedIn calls per day (default: 20)",
     )
     discover_parser.set_defaults(func=discover)
+
+    # digest — Phase 1 Telegram push: top eng jobs → phone, one card per job
+    digest_parser = subparsers.add_parser(
+        "digest",
+        help="Push today's top eng-flavored jobs to Telegram (one card per job)",
+    )
+    digest_parser.add_argument(
+        "--limit", type=int, default=10,
+        help="Max cards to send (default: 10)",
+    )
+    digest_parser.add_argument(
+        "--max-age-days", type=int, default=7,
+        help="Only send jobs posted within this many days (default: 7)",
+    )
+    digest_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Print formatted cards to stdout instead of sending to Telegram",
+    )
+    digest_parser.add_argument(
+        "--reset", action="store_true",
+        help="Clear data/digested.json before running (re-eligible all jobs)",
+    )
+    digest_parser.add_argument(
+        "--send", action="store_true",
+        help="With --reset: also send after clearing (default: clear-and-exit)",
+    )
+    digest_parser.set_defaults(func=digest)
 
     # gaps
     gaps_parser = subparsers.add_parser(
