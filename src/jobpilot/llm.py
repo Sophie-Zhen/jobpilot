@@ -9,10 +9,22 @@ from typing import Any
 from jobpilot.stories import Story
 
 
-def _call_claude(prompt: str, timeout: int = 120, tools: list[str] | None = None) -> str:
-    """Call Claude Code CLI and return the text response."""
+def _call_claude(
+    prompt: str,
+    timeout: int = 120,
+    tools: list[str] | None = None,
+    model: str | None = None,
+) -> str:
+    """Call Claude Code CLI and return the text response.
+
+    ``model`` accepts a CLI alias ('haiku', 'sonnet', 'opus') or a full ID
+    like 'claude-haiku-4-5-20251001'. When None, inherits whatever Claude
+    Code is configured for the user (typically Opus for this project).
+    """
     try:
         cmd = ["claude", "-p", "--output-format", "json"]
+        if model:
+            cmd.extend(["--model", model])
         if tools:
             cmd.extend(["--allowedTools", ",".join(tools)])
         result = subprocess.run(
@@ -563,7 +575,11 @@ def classify_role_level(job: dict[str, Any]) -> str:
         "No markdown fences."
     )
     try:
-        response = _call_claude(prompt, timeout=30)
+        # Haiku trial (2026-05-18): classify_role_level is a 4-way categorical
+        # extraction over a short JD snippet — no deep reasoning needed.
+        # If Haiku misjudges (e.g. labels Staff/Principal as "senior" instead
+        # of separating, or trips on edge cases), revert to default Opus.
+        response = _call_claude(prompt, timeout=30, model="haiku")
         data = _parse_json_response(response)
         level = data.get("level", "mid").lower()
         if level in ("graduate", "junior", "mid", "senior"):
