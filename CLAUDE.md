@@ -38,7 +38,7 @@ data/applications.json  ← application tracking with status history
 6. **Web search for jobs** — Claude Code with WebSearch/WebFetch tools searches LinkedIn directly. Falls back to RapidAPI sources.
 7. **Persistent workflow** — search results, per-job work state (CV, cover letter, eval), and application tracking all persist to disk. Can resume from any stage.
 
-## Pipeline flow (15 LangGraph nodes)
+## Pipeline flow (14 LangGraph nodes)
 
 ```
 START → load_profile → load_stories → search_jobs → score_jobs → review_jobs
@@ -53,18 +53,25 @@ Scheduled mode (cron): skips all review interrupts, saves scored jobs for later 
 
 | File | Purpose |
 |------|---------|
-| `src/jobpilot/llm.py` (590 lines) | All LLM functions: `tailor_cv`, `generate_cover_letter`, `classify_role_level`, `evaluate_cv`, `fetch_full_jd`, `search_jobs_web`, `structure_story`, `refine_story`, `revise_cv`, `import_stories` |
-| `src/jobpilot/app.py` (618 lines) | Streamlit UI: 4 tabs (Add Content, Story Bank, Job Pipeline, Applications). Pipeline tab has one-at-a-time job workflow with persistent state. |
-| `src/jobpilot/cli.py` (514 lines) | CLI with argparse subparsers: `run`, `init-profile`, `story add/list/import/migrate/edit/delete/refine`, `status`, `update`, `feedback` |
-| `src/jobpilot/agents.py` (465 lines) | LangGraph nodes: load_profile, load_stories, search_jobs, score_jobs, review_jobs, fetch_jds, tailor_resume, review_tailored, evaluate_cv, review_evaluation, render_pdfs, apply_jobs, learning_progress, learning_plan |
-| `src/jobpilot/job_sources.py` (441 lines) | Job search providers (jsearch, linkedin, active_jobs_db, arbeitnow, remotive), dedup filter (seen_jobs.json + applications.json), budget tracking |
-| `src/jobpilot/stories.py` (233 lines) | Story Pydantic model, StoryBank class (CRUD, Claude-powered relevance ranking, keyword fallback, dedup) |
-| `src/jobpilot/renderer.py` (123 lines) | LaTeX escaping (placeholder-based to avoid double-escape), Jinja2 custom delimiters, pdflatex compilation |
-| `src/jobpilot/graph.py` (67 lines) | LangGraph StateGraph wiring — 15 nodes |
-| `src/jobpilot/profile.py` (74 lines) | Loads unified profile: contact from master_cv.json, search config from profile.json |
-| `src/jobpilot/config.py` (41 lines) | Settings dataclass loaded from .env |
-| `src/jobpilot/state.py` (21 lines) | JobPilotState TypedDict |
-| `src/jobpilot/storage.py` (102 lines) | StoryStore protocol, InMemoryStore, SupabaseStore (deferred) |
+| `src/jobpilot/llm.py` | All LLM functions: `tailor_cv`, `generate_cover_letter`, `classify_role_level`, `evaluate_cv`, `fetch_full_jd`, `search_jobs_web`, `structure_story`, `refine_story`, `revise_cv`, `import_stories` |
+| `src/jobpilot/app.py` | Streamlit UI: 4 tabs (Add Content, Story Bank, Job Pipeline, Applications). Pipeline tab has one-at-a-time job workflow with persistent state. |
+| `src/jobpilot/app_runner.py` | Entry point for `jobpilot-ui` script that launches Streamlit |
+| `src/jobpilot/cli.py` | CLI with argparse subparsers: `run`, `tailor`, `init-profile`, `story add/list/import/migrate/edit/delete/refine`, `status`, `update`, `feedback`, `gaps` |
+| `src/jobpilot/agents.py` | LangGraph nodes: load_profile, load_stories, search_jobs, score_jobs, review_jobs, fetch_jds, tailor_resume, review_tailored, evaluate_cv, review_evaluation, render_pdfs, apply_jobs, learning_progress, learning_plan |
+| `src/jobpilot/ats.py` | ATS keyword extractor + scorer + simulator driving auto-tailor loop |
+| `src/jobpilot/gaps.py` | Skill gap analysis: aggregate ATS keyword gaps across JDs |
+| `src/jobpilot/job_sources.py` | Job search providers (jsearch, linkedin, active_jobs_db, arbeitnow, remotive), dedup filter (seen_jobs.json + applications.json), budget tracking |
+| `src/jobpilot/discovery/ats_sources.py` | Tier-1 discovery: poll target-company ATS endpoints for Dublin jobs |
+| `src/jobpilot/discovery/opencli_source.py` | Tier-2 discovery: LinkedIn/Indeed scraping via opencli |
+| `src/jobpilot/api.py` | FastAPI backend exposing pipeline data |
+| `src/jobpilot/notify.py` | Telegram notification helpers |
+| `src/jobpilot/stories.py` | Story Pydantic model, StoryBank class (CRUD, Claude-powered relevance ranking, keyword fallback, dedup) |
+| `src/jobpilot/renderer.py` | LaTeX escaping (placeholder-based to avoid double-escape), Jinja2 custom delimiters, pdflatex compilation |
+| `src/jobpilot/graph.py` | LangGraph StateGraph wiring — 14 nodes |
+| `src/jobpilot/profile.py` | Loads unified profile: contact from master_cv.json, search config from profile.json |
+| `src/jobpilot/config.py` | Settings dataclass loaded from .env |
+| `src/jobpilot/state.py` | JobPilotState TypedDict |
+| `src/jobpilot/storage.py` | StoryStore protocol, InMemoryStore, SupabaseStore (deferred) |
 | `templates/cv.tex` | ATS-friendly LaTeX CV template with Jinja2 placeholders. Experience before Education. Clickable email/LinkedIn/GitHub links. |
 | `templates/cover_letter.tex` | LaTeX cover letter template |
 
