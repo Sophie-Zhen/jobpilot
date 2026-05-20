@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -519,12 +520,50 @@ def generate_cover_letter(
         "Write the cover letter directly. Start with 'Dear Hiring Manager,' or similar.\n"
         f"{'End with a closing similar to: ' + closing_style if closing_style else ''}\n"
         "Do NOT include any preamble like 'Here is the cover letter:' or '---'.\n"
+        "Do NOT include a sign-off line (Sincerely/Best regards/Yours/etc) or the candidate's name at the end — "
+        "the document template adds the signature automatically. End on the final paragraph of body text.\n"
         "No JSON wrapping, no markdown fences."
     )
     try:
-        return _call_claude(prompt)
+        return _strip_signature(_call_claude(prompt))
     except Exception as exc:
         raise RuntimeError(f"Cover letter generation failed: {exc}") from exc
+
+
+_SIGNOFF_RE = re.compile(
+    r"^(sincerely|best regards|kind regards|warm regards|regards|best|yours sincerely|"
+    r"yours faithfully|yours truly|cordially|respectfully|thank you|thanks)\b[\s,.!-]*$",
+    re.IGNORECASE,
+)
+
+
+def _strip_signature(text: str) -> str:
+    """Strip any trailing sign-off + name lines from a cover-letter body.
+
+    The LaTeX template hardcodes "Sincerely,\\\\<name>" at the end, so any sign-off
+    or name the LLM emits would duplicate it. Walks backwards from the end and drops
+    blank lines, sign-off phrases, and short name-like lines until it hits substantive
+    body content.
+    """
+    if not text:
+        return text
+    lines = text.rstrip().split("\n")
+    while lines:
+        last = lines[-1].strip()
+        if not last:
+            lines.pop()
+            continue
+        if _SIGNOFF_RE.match(last):
+            lines.pop()
+            continue
+        # Heuristic: short line (<=5 words, <=60 chars) with no terminal punctuation
+        # is almost certainly a signature name, not a body sentence.
+        words = last.split()
+        if len(words) <= 5 and len(last) <= 60 and not last.endswith((".", "?", "!", ":")):
+            lines.pop()
+            continue
+        break
+    return "\n".join(lines).rstrip()
 
 
 def summarize_jd(description: str, title: str = "", company: str = "") -> str:
