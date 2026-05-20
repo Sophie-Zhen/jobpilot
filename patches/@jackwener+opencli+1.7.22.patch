@@ -1,0 +1,124 @@
+diff --git a/node_modules/@jackwener/opencli/clis/linkedin/search.js b/node_modules/@jackwener/opencli/clis/linkedin/search.js
+index a072b19..ea11e7e 100644
+--- a/node_modules/@jackwener/opencli/clis/linkedin/search.js
++++ b/node_modules/@jackwener/opencli/clis/linkedin/search.js
+@@ -4,6 +4,46 @@ const LINKEDIN_DOMAIN = 'linkedin.com';
+ const MIN_LIMIT = 1;
+ const MAX_LIMIT = 100;
+ const MIN_START = 0;
++// ── Patched (jobpilot fork): human-like engagement helpers ────────────
++// Upstream linkedin search does page.goto + Voyager API call with no scroll,
++// no dwell, no inter-call jitter. That pattern is trivially classifiable by
++// LinkedIn's anti-bot system. These helpers add the behavioral signals
++// (think-time, scrolling, reading dwell) that a real human exhibits while
++// browsing job listings. Patched via patch-package; see patches/ in jobpilot.
++async function _humanJitter(minMs, maxMs) {
++    const ms = Math.floor(Math.random() * Math.max(0, maxMs - minMs)) + minMs;
++    return new Promise((resolve) => setTimeout(resolve, ms));
++}
++async function _humanBrowseResults(page) {
++    // Initial "load and look" pause before any interaction
++    await _humanJitter(1500, 3500);
++    // Scroll the results page 2-4 times, simulating scanning the listings
++    const scrolls = 2 + Math.floor(Math.random() * 3);
++    for (let i = 0; i < scrolls; i++) {
++        try {
++            await page.autoScroll({ times: 1, delayMs: 600 + Math.floor(Math.random() * 800) });
++        }
++        catch (_) {
++            // autoScroll may be unavailable on some adapter builds — non-fatal
++        }
++        await _humanJitter(1500, 4000);
++    }
++    // Settle pause before extraction
++    await _humanJitter(1000, 3000);
++}
++async function _humanDwellOnDetail(page) {
++    // Initial pause after navigation completes — "looking at the page"
++    await _humanJitter(2000, 5000);
++    // Scroll through the JD as if reading
++    const scrolls = 2 + Math.floor(Math.random() * 2);
++    for (let i = 0; i < scrolls; i++) {
++        try {
++            await page.autoScroll({ times: 1, delayMs: 700 + Math.floor(Math.random() * 600) });
++        }
++        catch (_) { }
++        await _humanJitter(1500, 3500);
++    }
++}
+ // ── Filter value mappings ──────────────────────────────────────────────
+ const EXPERIENCE_LEVELS = {
+     internship: '1',
+@@ -141,10 +181,15 @@ function looksLinkedInAuthWallText(value) {
+     const text = String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+     if (!text)
+         return false;
+-    return /\b(sign in|log in|join linkedin)\b/.test(text) ||
+-        /linkedin\.com\/(login|checkpoint|authwall)/i.test(text) ||
+-        /\b(captcha|verification required)\b/.test(text) ||
+-        /(请登录|登录领英|安全验证)/.test(text);
++    // jobpilot local patch: upstream check matched "sign in" / "log in"
++    // anywhere in body text — but those phrases appear in signed-in LinkedIn
++    // page footers and CTAs (e.g. "sign in to apply" on guest preview blocks
++    // even though you're logged in), causing false-positive AUTH_REQUIRED.
++    // Trust only an explicit URL redirect to login/checkpoint/authwall +
++    // captcha / security-check signals.
++    return /linkedin\.com\/(login|checkpoint|authwall|uas\/login)/i.test(text) ||
++        /\b(captcha|verification required|security check)\b/.test(text) ||
++        /(安全验证|身份验证|请完成验证)/.test(text);
+ }
+ function buildLinkedInAuthProbeScript() {
+     return `(() => {
+@@ -158,7 +203,22 @@ function buildLinkedInAuthProbeScript() {
+ }
+ async function assertLinkedInAuthenticated(page, context) {
+     const authRequired = await page.evaluate(buildLinkedInAuthProbeScript());
+-    if (authRequired) {
++    // jobpilot local patch: page.evaluate returns a wrapped object
++    // ({ value, result, data, ... } depending on bridge version), not a raw
++    // boolean. Naïvely doing `if (authRequired)` treats any non-null wrapper
++    // as truthy → false-positive AUTH_REQUIRED on every call. Unwrap before
++    // testing.
++    let truthy;
++    if (typeof authRequired === 'boolean') {
++        truthy = authRequired;
++    }
++    else if (authRequired && typeof authRequired === 'object') {
++        truthy = Boolean(authRequired.value ?? authRequired.result ?? authRequired.data);
++    }
++    else {
++        truthy = Boolean(authRequired);
++    }
++    if (truthy) {
+         throw new AuthRequiredError(LINKEDIN_DOMAIN, `${context} requires an active signed-in LinkedIn browser session`);
+     }
+ }
+@@ -335,10 +395,18 @@ async function enrichJobDetails(page, jobs) {
+             enriched.push({ ...job, description: null, apply_url: null, detail_error: reason });
+             continue;
+         }
++        // Patched: random gap between JD opens — humans don't open detail
++        // pages back-to-back without pause. Skip on first iteration since
++        // the search-results dwell already covers that.
++        if (i > 0) {
++            await _humanJitter(8000, 22000);
++        }
+         try {
+             await page.goto(job.url);
+             await assertLinkedInAuthenticated(page, 'LinkedIn job detail');
+             await page.wait({ text: 'About the job', timeout: 8 });
++            // Patched: dwell on the JD, scrolling as if reading
++            await _humanDwellOnDetail(page);
+             // Expand "Show more" button if present
+             await page.evaluate(`(() => {
+         const norm = (v) => (v || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+@@ -428,6 +496,9 @@ cli({
+         await page.goto(`https://www.linkedin.com/jobs/search/?${searchParams.toString()}`);
+         await assertLinkedInAuthenticated(page, 'LinkedIn search');
+         await page.wait({ text: 'Jobs', timeout: 10 });
++        // Patched: browse the results like a human before doing the
++        // Voyager API call — pause, scroll, scan. Adds ~10-25s per query.
++        await _humanBrowseResults(page);
+         const companyIds = await resolveCompanyIds(page, kwargs.company);
+         const input = {
+             keywords,

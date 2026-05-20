@@ -116,6 +116,11 @@ def _run_opencli(args: list[str], timeout: int = 120) -> tuple[int, str, str]:
     """Run opencli with Node 22 in PATH. Returns (returncode, stdout, stderr)."""
     env = os.environ.copy()
     env["PATH"] = _resolve_node22_bin() + os.pathsep + env.get("PATH", "")
+    # Suppress opencli's "Update available: vX → vY" trailer that gets
+    # appended to stdout — it contaminates JSON output and breaks
+    # json.loads() in callers. NO_UPDATE_NOTIFIER is the npm community
+    # convention recognized by the `update-notifier` library opencli uses.
+    env["NO_UPDATE_NOTIFIER"] = "1"
     try:
         result = subprocess.run(
             [str(_OPENCLI_BIN), *args],
@@ -210,8 +215,14 @@ def linkedin_search(
         msg = (stderr or stdout or "unknown")[:300].strip()
         return [], f"opencli rc={rc}: {msg}"
 
+    # Use raw_decode to tolerate trailing non-JSON output. opencli
+    # occasionally appends an "Update available: vX → vY" notice from the
+    # update-notifier npm library after its JSON payload; NO_UPDATE_NOTIFIER
+    # in env suppresses most cases but the library's cooldown semantics make
+    # that imperfect. raw_decode parses JSON from the start of the string
+    # and ignores whatever comes after.
     try:
-        raw = json.loads(stdout)
+        raw, _ = json.JSONDecoder().raw_decode(stdout.lstrip())
     except json.JSONDecodeError as exc:
         return [], f"opencli stdout not JSON: {exc}"
 
