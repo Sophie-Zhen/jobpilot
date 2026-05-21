@@ -121,6 +121,11 @@ def _run_opencli(args: list[str], timeout: int = 120) -> tuple[int, str, str]:
     # json.loads() in callers. NO_UPDATE_NOTIFIER is the npm community
     # convention recognized by the `update-notifier` library opencli uses.
     env["NO_UPDATE_NOTIFIER"] = "1"
+    # Extend opencli's per-command 60s default. Patched linkedin search
+    # with engagement helpers (jitter + scroll + dwell) + --details detail
+    # fetches per result needs more headroom. 180s lets ~3-5 JDs/query
+    # complete without hitting global timeout.
+    env.setdefault("OPENCLI_BROWSER_COMMAND_TIMEOUT", "180")
     try:
         result = subprocess.run(
             [str(_OPENCLI_BIN), *args],
@@ -204,9 +209,16 @@ def linkedin_search(
         return [], f"daily budget exhausted ({get_daily_usage()}/{budget})"
 
     _record_call()
+    # --window foreground is REQUIRED for --details=true. opencli's default
+    # windowMode is "background", and Chrome throttles JavaScript execution
+    # in background tabs. LinkedIn's JD pages use client-side React hydration
+    # to render the "About the job" section — when the tab is throttled, the
+    # section never appears and detail fetch fails with "Text not found:
+    # About the job". Foreground mode unblocks hydration. Verified 2026-05-21.
     args = ["linkedin", "search", query,
             "--limit", str(limit),
-            "--date-posted", date_posted]
+            "--date-posted", date_posted,
+            "--window", "foreground"]
     if with_details:
         args += ["--details", "true"]
     args += ["-f", "json"]

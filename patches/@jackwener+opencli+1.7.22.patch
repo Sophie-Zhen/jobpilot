@@ -1,5 +1,5 @@
 diff --git a/node_modules/@jackwener/opencli/clis/linkedin/search.js b/node_modules/@jackwener/opencli/clis/linkedin/search.js
-index a072b19..ea11e7e 100644
+index a072b19..a2e1f06 100644
 --- a/node_modules/@jackwener/opencli/clis/linkedin/search.js
 +++ b/node_modules/@jackwener/opencli/clis/linkedin/search.js
 @@ -4,6 +4,46 @@ const LINKEDIN_DOMAIN = 'linkedin.com';
@@ -93,26 +93,42 @@ index a072b19..ea11e7e 100644
          throw new AuthRequiredError(LINKEDIN_DOMAIN, `${context} requires an active signed-in LinkedIn browser session`);
      }
  }
-@@ -335,10 +395,18 @@ async function enrichJobDetails(page, jobs) {
+@@ -335,10 +395,33 @@ async function enrichJobDetails(page, jobs) {
              enriched.push({ ...job, description: null, apply_url: null, detail_error: reason });
              continue;
          }
 +        // Patched: random gap between JD opens — humans don't open detail
 +        // pages back-to-back without pause. Skip on first iteration since
 +        // the search-results dwell already covers that.
++        // Reduced from (8-22s) to (3-8s) to fit within the 60s global
++        // command timeout when fetching multiple details per query.
 +        if (i > 0) {
-+            await _humanJitter(8000, 22000);
++            await _humanJitter(3000, 8000);
 +        }
          try {
              await page.goto(job.url);
              await assertLinkedInAuthenticated(page, 'LinkedIn job detail');
-             await page.wait({ text: 'About the job', timeout: 8 });
-+            // Patched: dwell on the JD, scrolling as if reading
+-            await page.wait({ text: 'About the job', timeout: 8 });
++            // jobpilot patch: settle + light scroll before waiting for the
++            // section heading. The Python caller MUST invoke this command
++            // with `--window foreground` — opencli's default windowMode is
++            // 'background', and Chrome throttles JS in background tabs, so
++            // LinkedIn's React JD page never hydrates and "About the job"
++            // never appears. With foreground mode the page renders within a
++            // few seconds; the scroll here is just a human-engagement signal
++            // and a minor nudge for any in-view lazy components.
++            await page.wait(1);
++            try {
++                await page.autoScroll({ times: 2, delayMs: 500 });
++            }
++            catch (_) { }
++            await page.wait({ text: 'About the job', timeout: 20 });
++            // Patched: dwell on the JD, scrolling a bit more as if reading
 +            await _humanDwellOnDetail(page);
              // Expand "Show more" button if present
              await page.evaluate(`(() => {
          const norm = (v) => (v || '').replace(/\\s+/g, ' ').trim().toLowerCase();
-@@ -428,6 +496,9 @@ cli({
+@@ -428,6 +511,9 @@ cli({
          await page.goto(`https://www.linkedin.com/jobs/search/?${searchParams.toString()}`);
          await assertLinkedInAuthenticated(page, 'LinkedIn search');
          await page.wait({ text: 'Jobs', timeout: 10 });
