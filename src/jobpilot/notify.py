@@ -12,7 +12,11 @@ except ImportError:
     pass
 
 
-def send_telegram(message: str, parse_mode: str | None = "Markdown") -> bool:
+def send_telegram(
+    message: str,
+    parse_mode: str | None = "Markdown",
+    reply_markup: dict | None = None,
+) -> bool:
     """Send a Telegram message. Returns True on success.
 
     ``parse_mode``: Telegram parse mode ("Markdown", "MarkdownV2", "HTML")
@@ -21,7 +25,12 @@ def send_telegram(message: str, parse_mode: str | None = "Markdown") -> bool:
     unbalanced markdown delimiters — those raise 400 "can't parse entities"
     from Telegram. Default is "Markdown" for backwards compatibility with
     callers that send composed status messages.
+
+    ``reply_markup``: Telegram InlineKeyboardMarkup as a dict (see
+    ``bot.build_card_markup_dict``). Pass ``None`` for a plain message
+    without buttons.
     """
+    import json as _json
     import sys
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
@@ -31,13 +40,12 @@ def send_telegram(message: str, parse_mode: str | None = "Markdown") -> bool:
         body: dict[str, str] = {"chat_id": chat_id, "text": message}
         if parse_mode:
             body["parse_mode"] = parse_mode
+        if reply_markup is not None:
+            body["reply_markup"] = _json.dumps(reply_markup, ensure_ascii=False)
         params = urllib.parse.urlencode(body)
         url = f"https://api.telegram.org/bot{token}/sendMessage?{params}"
         urllib.request.urlopen(url, timeout=10)
         return True
     except Exception as exc:
-        # Surface the failure to stderr so debugging doesn't require
-        # adding logging at every call site. Callers can suppress by
-        # redirecting stderr if the noise is unwanted.
         print(f"send_telegram failed: {exc}", file=sys.stderr)
         return False

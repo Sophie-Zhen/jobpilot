@@ -22,6 +22,8 @@ data/applications.json
 data/dismissed_jobs.json
 data/seen_jobs.json
 data/digested.json
+data/saved.json
+data/skipped.json
 audit_report.pdf
 
 # Personal data files (PII). Examples are committed; real files are local-only.

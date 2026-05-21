@@ -880,7 +880,9 @@ def digest(args: argparse.Namespace) -> None:
         # may contain unbalanced markdown delimiters or HTML entities (e.g.
         # &lt;/&quot;/`*`/`_`) that trigger Telegram 400 "can't parse
         # entities" errors. Cards are formatted as plain text anyway.
-        ok = send_telegram(message, parse_mode=None)
+        from jobpilot.bot import build_card_markup_dict
+        markup = build_card_markup_dict(job["id"])
+        ok = send_telegram(message, parse_mode=None, reply_markup=markup)
         if ok:
             sent_now += 1
             digested["sent_ids"].append(job["id"])
@@ -894,6 +896,12 @@ def digest(args: argparse.Namespace) -> None:
     print(f"\nDigest done: {sent_now} sent, {failed} failed.")
     if failed and not os.getenv("TELEGRAM_BOT_TOKEN"):
         print("Hint: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set in env.")
+
+
+def bot_run(_args: argparse.Namespace) -> None:
+    """Start the Telegram bot daemon (long-polling). Blocks until killed."""
+    from jobpilot.bot import run_bot
+    run_bot()
 
 
 def tailor_one_job(args: argparse.Namespace) -> None:
@@ -1128,6 +1136,15 @@ def main() -> None:
         help="With --reset: also send after clearing (default: clear-and-exit)",
     )
     digest_parser.set_defaults(func=digest)
+
+    # bot
+    bot_parser = subparsers.add_parser(
+        "bot",
+        help="Telegram bot daemon (handles Save/Skip taps on digest cards)",
+    )
+    bot_sub = bot_parser.add_subparsers(dest="bot_command", help="Bot commands")
+    bot_run_parser = bot_sub.add_parser("run", help="Start the long-polling daemon")
+    bot_run_parser.set_defaults(func=bot_run)
 
     # gaps
     gaps_parser = subparsers.add_parser(
