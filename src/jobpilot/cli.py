@@ -876,7 +876,11 @@ def digest(args: argparse.Namespace) -> None:
     failed = 0
     for job in picks:
         message = _format_job_digest(job)
-        ok = send_telegram(message)
+        # parse_mode=None: digest cards embed raw JD descriptions which
+        # may contain unbalanced markdown delimiters or HTML entities (e.g.
+        # &lt;/&quot;/`*`/`_`) that trigger Telegram 400 "can't parse
+        # entities" errors. Cards are formatted as plain text anyway.
+        ok = send_telegram(message, parse_mode=None)
         if ok:
             sent_now += 1
             digested["sent_ids"].append(job["id"])
