@@ -190,7 +190,7 @@ def linkedin_search(
     query: str,
     limit: int = 25,
     date_posted: str = "week",
-    timeout: int = 240,
+    timeout: int | None = None,
     budget: int = DAILY_BUDGET_DEFAULT,
     with_details: bool = True,
 ) -> tuple[list[dict[str, Any]], str | None]:
@@ -202,11 +202,20 @@ def linkedin_search(
     ``with_details=True`` adds ``--details`` so each result carries the
     full JD body (slower per result, but eliminates the post-hoc
     fetch_full_jd round-trip later).
+
+    ``timeout=None`` (default) scales the subprocess timeout with ``limit``
+    and whether ``with_details`` is set, since each detail fetch runs the
+    human-engagement helpers (jitter + scroll + dwell) and takes ~25-35s
+    when --window foreground is used. With details, allow ~40s per JD plus
+    60s search overhead; without details, ~10s per JD is plenty.
     """
     if not opencli_available():
         return [], "opencli not installed locally — run `npm install` in project root"
     if is_over_budget(budget):
         return [], f"daily budget exhausted ({get_daily_usage()}/{budget})"
+    if timeout is None:
+        per_job = 40 if with_details else 10
+        timeout = 60 + limit * per_job
 
     _record_call()
     # --window foreground is REQUIRED for --details=true. opencli's default
