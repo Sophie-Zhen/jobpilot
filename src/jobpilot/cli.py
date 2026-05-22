@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -756,6 +757,31 @@ def _save_digested(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def _slug_for_folder(text: str) -> str:
+    """Lowercase, non-alphanumeric → underscore, collapse repeats, strip edges."""
+    return re.sub(r"_+", "_", re.sub(r"[^a-z0-9]+", "_", (text or "").lower())).strip("_")
+
+
+def _job_folder(job: dict) -> str:
+    """Human-readable per-job output folder name.
+
+    Format: ``{company}_{title_short}_{id_suffix}``. ``title_short`` is the
+    first 6 words of the title slugified and capped at 40 chars. ``id_suffix``
+    is the trailing numeric portion of ``job_id`` (the platform's posting id,
+    e.g. ``7925313`` from ``intercom_7925313``); falls back to the last 8
+    chars for opaque schemes. Falls back to the bare ``job_id`` if all
+    components slugify to empty.
+    """
+    job_id = job.get("id", "") or "unknown"
+    company_slug = _slug_for_folder(job.get("company", ""))
+    title_words = (job.get("title", "") or "").split()[:6]
+    title_slug = _slug_for_folder(" ".join(title_words))[:40].rstrip("_")
+    m = re.search(r"(\d+)$", job_id)
+    id_suffix = m.group(1) if m else job_id[-8:].lstrip("_")
+    parts = [p for p in (company_slug, title_slug, id_suffix) if p]
+    return "_".join(parts) if parts else job_id
+
+
 def _format_job_digest(job: dict) -> str:
     """Format one job as a Telegram-friendly plain-text card.
 
@@ -909,9 +935,9 @@ def tailor_one_job(args: argparse.Namespace) -> None:
 
     Per-job manual workflow — bypasses the LangGraph batch pipeline so the
     discovery + scoring steps don't re-run. Outputs PDFs to
-    output/{job_id}/cv_{variant}.pdf + cover_letter_{variant}.pdf, plus a
-    state JSON for inspection / re-render later. Runs check_page_count on
-    the CV and prints any half-page / overflow warning.
+    output/{company}_{title}_{id}/cv_{variant}.pdf and cover_letter_{variant}.pdf,
+    plus a state JSON for inspection / re-render later. Runs check_page_count
+    on the CV and prints any half-page / overflow warning.
     """
     from jobpilot.llm import (
         TARGET_PAGES_BY_VARIANT,
@@ -989,7 +1015,7 @@ def tailor_one_job(args: argparse.Namespace) -> None:
     print("Calling generate_cover_letter (LLM, ~30-60s) ...")
     cover_letter_text = generate_cover_letter(job, relevant_stories, profile, role_level=role_level)
 
-    output_dir = Path(settings.output_dir) / job_id
+    output_dir = Path(settings.output_dir) / _job_folder(job)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     state_path = output_dir / f"state_{variant}.json"
