@@ -192,22 +192,32 @@ def linkedin_search(
     date_posted: str = "week",
     timeout: int | None = None,
     budget: int = DAILY_BUDGET_DEFAULT,
-    with_details: bool = True,
+    with_details: bool = False,
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Run one opencli LinkedIn search, return (jobs, error).
 
     Records the call in data/api_usage.json BEFORE invoking (so a hung
     subprocess still counts — fail loud rather than silently retry).
     ``date_posted`` ∈ {"any", "month", "week", "24h"}.
+
+    ``with_details=False`` (default): return job metadata only — title,
+    company, location, URL, posted date. Descriptions are lazy-fetched
+    later by ``llm.fetch_full_jd`` when ``jobpilot tailor`` actually needs
+    them. This avoids the foreground-tab requirement (see below), so T2
+    discovery is robust to the user actively using their browser.
+
     ``with_details=True`` adds ``--details`` so each result carries the
-    full JD body (slower per result, but eliminates the post-hoc
-    fetch_full_jd round-trip later).
+    full JD body via in-search navigation. Faster end-to-end IF the user
+    keeps the opencli Chrome tab focused for the whole batch (~30 min for
+    4 queries × 15 details), but in practice any focus shift to another
+    app or tab causes Chrome to background-throttle the tab — the React
+    JD page then never hydrates and every detail fetch fails with
+    "Text not found: About the job". Only use this when the run is
+    unattended (cron) or you can leave the foreground tab alone.
 
     ``timeout=None`` (default) scales the subprocess timeout with ``limit``
-    and whether ``with_details`` is set, since each detail fetch runs the
-    human-engagement helpers (jitter + scroll + dwell) and takes ~25-35s
-    when --window foreground is used. With details, allow ~40s per JD plus
-    60s search overhead; without details, ~10s per JD is plenty.
+    and ``with_details``. With details, allow ~40s per JD plus 60s search
+    overhead; without details, ~10s per JD is plenty.
     """
     if not opencli_available():
         return [], "opencli not installed locally — run `npm install` in project root"
@@ -218,18 +228,13 @@ def linkedin_search(
         timeout = 60 + limit * per_job
 
     _record_call()
-    # --window foreground is REQUIRED for --details=true. opencli's default
-    # windowMode is "background", and Chrome throttles JavaScript execution
-    # in background tabs. LinkedIn's JD pages use client-side React hydration
-    # to render the "About the job" section — when the tab is throttled, the
-    # section never appears and detail fetch fails with "Text not found:
-    # About the job". Foreground mode unblocks hydration. Verified 2026-05-21.
     args = ["linkedin", "search", query,
             "--limit", str(limit),
-            "--date-posted", date_posted,
-            "--window", "foreground"]
+            "--date-posted", date_posted]
     if with_details:
-        args += ["--details", "true"]
+        # --window foreground is required for --details=true to render the
+        # JD's React-hydrated "About the job" section. See docstring above.
+        args += ["--details", "true", "--window", "foreground"]
     args += ["-f", "json"]
     rc, stdout, stderr = _run_opencli(args, timeout=timeout)
     if rc != 0:
