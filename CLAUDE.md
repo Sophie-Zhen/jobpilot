@@ -65,6 +65,7 @@ Scheduled mode (cron): skips all review interrupts, saves scored jobs for later 
 | `src/jobpilot/discovery/opencli_source.py` | Tier-2 discovery: LinkedIn/Indeed scraping via opencli |
 | `src/jobpilot/api.py` | FastAPI backend exposing pipeline data |
 | `src/jobpilot/notify.py` | Telegram notification helpers |
+| `src/jobpilot/inbox_sync.py` | Phase 4: multi-account Gmail → applications.json. OAuth per account, LLM classifier (rejection/interview/info_request/ack/other), fuzzy company match, Telegram push on status change. Read-only; never replies. |
 | `src/jobpilot/stories.py` | Story Pydantic model, StoryBank class (CRUD, Claude-powered relevance ranking, keyword fallback, dedup) |
 | `src/jobpilot/renderer.py` | LaTeX escaping (placeholder-based to avoid double-escape), Jinja2 custom delimiters, pdflatex compilation |
 | `src/jobpilot/graph.py` | LangGraph StateGraph wiring — 14 nodes |

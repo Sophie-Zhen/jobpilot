@@ -381,6 +381,17 @@ def app_update(args: argparse.Namespace) -> None:
     print(f"Updated {args.job_id} → status={args.status}")
 
 
+def inbox_sync(args: argparse.Namespace) -> None:
+    from jobpilot.inbox_sync import run_inbox_sync
+
+    run_inbox_sync(
+        query=args.query,
+        dry_run=args.dry_run,
+        account_filter=args.account,
+        push_telegram=not args.no_telegram,
+    )
+
+
 def app_feedback(args: argparse.Namespace) -> None:
     apps_path = Path("data/applications.json")
     if not apps_path.exists():
@@ -1257,6 +1268,29 @@ def main() -> None:
     )
     feedback_parser.add_argument("--notes", type=str, help="Details about the response")
     feedback_parser.set_defaults(func=app_feedback)
+
+    # inbox-sync — Phase 4: multi-account Gmail → applications.json auto-update
+    inbox_parser = subparsers.add_parser(
+        "inbox-sync",
+        help="Read Gmail accounts, classify application emails, update applications.json + push Telegram",
+    )
+    inbox_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Fetch + classify but don't write applications.json or push Telegram",
+    )
+    inbox_parser.add_argument(
+        "--account", type=str, default=None,
+        help="Limit to one email account (default: all accounts in inbox_accounts.json)",
+    )
+    inbox_parser.add_argument(
+        "--query", type=str, default=None,
+        help="Override Gmail search query (default: noreply/careers senders, newer_than:30d)",
+    )
+    inbox_parser.add_argument(
+        "--no-telegram", action="store_true",
+        help="Skip Telegram push even on status-change events",
+    )
+    inbox_parser.set_defaults(func=inbox_sync)
 
     args = parser.parse_args()
     if not args.command:

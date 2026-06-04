@@ -24,7 +24,13 @@ data/seen_jobs.json
 data/digested.json
 data/saved.json
 data/skipped.json
+data/inbox_state.json
 audit_report.pdf
+
+# Phase 4 inbox-sync: OAuth secrets live in ~/.config/jobpilot/ outside the
+# repo, but defensive entries here in case anyone copies them into the tree.
+**/credentials.json
+**/token_*.json
 
 # Personal data files (PII). Examples are committed; real files are local-only.
 # On first setup: cp data/<name>.example.json data/<name>.json  and edit.
