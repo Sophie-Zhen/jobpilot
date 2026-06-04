@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JobPilot · Discovery Data-Flow Analysis / 职位发现数据流分析</title>
+<style>
+  :root {
+    --ink: #1a1a2e;
+    --muted: #5b6275;
+    --accent: #2d6cdf;
+    --legacy: #c0392b;
+    --current: #1e8449;
+    --cn-bg: #f5f7fb;
+    --code-bg: #1e1e2e;
+    --border: #e2e6ef;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", Segoe UI, Roboto, sans-serif;
+    color: var(--ink);
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 5rem;
+    line-height: 1.65;
+    background: #fff;
+  }
+  h1 { font-size: 1.9rem; line-height: 1.3; margin-bottom: .2rem; }
+  h1 .cn { display: block; font-size: 1.25rem; color: var(--muted); font-weight: 600; margin-top: .3rem; }
+  h2 { font-size: 1.35rem; margin-top: 2.6rem; padding-bottom: .4rem; border-bottom: 2px solid var(--border); }
+  h2 .cn { color: var(--muted); font-weight: 600; font-size: 1.05rem; }
+  h3 { font-size: 1.08rem; margin-top: 1.8rem; }
+  p { margin: .7rem 0; }
+  .lead { font-size: 1.05rem; }
+  .en { margin-bottom: .25rem; }
+  .cn {
+    background: var(--cn-bg);
+    border-left: 3px solid var(--accent);
+    padding: .55rem .9rem;
+    border-radius: 0 6px 6px 0;
+    color: #2c3142;
+    margin: .35rem 0 1.1rem;
+  }
+  code { font-family: "SF Mono", Menlo, Consolas, monospace; background: #eef1f7; padding: .1em .35em; border-radius: 4px; font-size: .88em; }
+  pre {
+    background: var(--code-bg); color: #d6deeb; padding: 1.1rem 1.2rem;
+    border-radius: 8px; overflow-x: auto; font-size: .8rem; line-height: 1.45;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .9rem; }
+  th, td { border: 1px solid var(--border); padding: .5rem .7rem; text-align: left; vertical-align: top; }
+  th { background: #f0f3fa; }
+  .tag-current { color: var(--current); font-weight: 700; }
+  .tag-legacy { color: var(--legacy); font-weight: 700; }
+  .cause { background: #fafbfe; border: 1px solid var(--border); border-radius: 8px; padding: .3rem 1.1rem 1rem; margin: 1.1rem 0; }
+  .cause h3 { margin-top: 1rem; }
+  .badge { display: inline-block; font-size: .72rem; font-weight: 700; padding: .12em .5em; border-radius: 4px; vertical-align: middle; }
+  .badge.cur { background: #e3f5ea; color: var(--current); }
+  .badge.leg { background: #fceae8; color: var(--legacy); }
+  .caveat { background: #fff8e6; border-left: 3px solid #e0a800; padding: .6rem 1rem; border-radius: 0 6px 6px 0; margin: 1rem 0; font-size: .92rem; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  .meta { color: var(--muted); font-size: .85rem; margin-top: .4rem; }
+  ul { margin: .5rem 0; }
+  li { margin: .3rem 0; }
+</style>
+</head>
+<body>
+
+<h1>JobPilot — Discovery Data-Flow Analysis
+  <span class="cn">职位发现数据流分析 · 英中对照</span>
+</h1>
+<p class="meta">Generated 2026-06-03 · Source: <code>pipeline_jobs.json</code> (~475 records) · 5-explorer mapping workflow</p>
+
+<p class="lead en">You're right that it looks messy. The short version: <code>pipeline_jobs.json</code> is a <strong>single append-only file written by several generations of discovery code</strong>, each with its own record shape and its own idea of where the "when was this posted" information goes. Nothing normalizes records afterward, and nothing ever evicts old ones. So the file is a geological record of every ingestion path you've ever run — not a clean snapshot of "current jobs."</p>
+<p class="cn">你的直觉没错，它确实乱。一句话概括：<code>pipeline_jobs.json</code> 是<strong>一个只追加（append-only）的文件，被好几代发现代码先后写入</strong>，每一代都有自己的记录结构，也各自决定把"发布时间"放在哪个字段里。事后没有任何环节去统一这些记录，也从来不删除旧记录。所以这个文件像地质沉积层一样，记录了你跑过的每一条采集路径——而不是"当前职位"的干净快照。</p>
+
+<hr>
+
+<h2>1. End-to-end flow <span class="cn">· 端到端数据流</span></h2>
+
+<p class="en">There are several producers, but only a few are <strong>current</strong>. They all funnel through the same merge/persist layer in <code>job_sources.py</code>, which (besides the Streamlit app) is the only thing that actually writes the file.</p>
+<p class="cn">有好几个"生产者"，但只有少数是<strong>当前在用的</strong>。它们都汇入 <code>job_sources.py</code> 里同一个合并/持久化层——除了 Streamlit 应用之外，这是唯一真正写入该文件的地方。</p>
+
+<pre>
+                          CURRENT PATHS / 当前路径
+  ┌──────────────────────────────────────────────────────────────┐
+  │  T1: ATS Direct Polling          T2: opencli LinkedIn search   │
+  │  ats_sources.py:discover_all     opencli_source.py:            │
+  │   ├ fetch_greenhouse              linkedin_search /            │
+  │   ├ fetch_lever                   discover_broad               │
+  │   └ fetch_ashby                                                │
+  │  source: ats:greenhouse:*        source: opencli:linkedin:     │
+  │          ats:ashby:*                     search                │
+  │  id: &lt;slug&gt;_&lt;atsid|titleslug&gt;    id: opencli_linkedin_&lt;id&gt;      │
+  │  date: posted_at + date_found    date: posted_at&lt;-"listed",    │
+  │                                        date_found              │
+  └─────────┬──────────────────────────────────┬──────────────────┘
+            └──────────────┬───────────────────┘
+                           ▼
+              job_sources.py:merge_jobs   ◄── dedup by job["id"] ONLY
+              job_sources.py:save_pipeline_jobs    仅按 id 去重
+                           ▼
+                ┌──────────────────────┐
+                │  pipeline_jobs.json   │  append-only, no TTL
+                │  ~475 records         │  只追加，无过期清理
+                └──────────────────────┘
+                           ▲ (also written directly by / 也被直接写入)
+  ┌────────────────────────┴────────────────────────────────────┐
+  │                   LEGACY / DEPRECATED  历史遗留 / 已废弃        │
+  │  web search       manual add       old crawler / bot          │
+  │  llm.py:          app.py:          (no live entry point)       │
+  │  search_jobs_web  manual_job_add   source: LinkedIn/linkedin/  │
+  │  source: web      source: manual          crawl4ai:*/old gh    │
+  │  id: web_&lt;hash&gt;   id: manual_&lt;md5&gt; id: bot_*, web_*           │
+  │  posted=relative  posted=ISO today posted=ISO "2026-04-14"     │
+  └────────────────────────────────────────────────────────────────┘
+</pre>
+
+<p class="en">Three things worth calling out:</p>
+<p class="cn">三个要点：</p>
+<ul>
+  <li><span class="en"><strong><code>merge_jobs</code> dedups on <code>job["id"]</code> and nothing else</strong> — no field normalization; the same real job from T1 vs T2 won't collide (different id schemes).</span>
+      <div class="cn"><strong><code>merge_jobs</code> 只按 <code>job["id"]</code> 去重</strong>，没有字段归一化；同一个真实职位若分别来自 T1 和 T2，因 id 规则不同，不会被识别为重复。</div></li>
+  <li><span class="en"><strong>It's append-only by design</strong> — "never removes, no TTL/staleness pruning." This one choice causes most of what you see.</span>
+      <div class="cn"><strong>设计上就是只追加的</strong>——"从不删除，无过期/陈旧清理"。正是这一个设计决定，导致了你看到的大部分问题。</div></li>
+  <li><span class="en"><strong>The LangGraph <code>search_jobs_node</code> does NOT write this file</strong> — it only returns state. The real writers are <code>jobpilot discover</code>, <code>scheduled_search()</code>, and the Streamlit app.</span>
+      <div class="cn"><strong>LangGraph 的 <code>search_jobs_node</code> 并不写这个文件</strong>——它只返回状态。真正的写入者是 <code>jobpilot discover</code>、<code>scheduled_search()</code> 和 Streamlit 应用。</div></li>
+</ul>
+
+<hr>
+
+<h2>2. Every ingestion path at a glance <span class="cn">· 所有采集路径一览</span></h2>
+
+<table>
+  <thead>
+    <tr><th>Path / 路径</th><th><code>source</code> tag</th><th>id prefix</th><th>Dates / 日期处理</th><th>Status / 状态</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>T1 ATS polling</strong><br><code>ats_sources.py</code></td><td><code>ats:greenhouse:*</code>, <code>ats:ashby:*</code></td><td><code>&lt;slug&gt;_&lt;atsid&gt;</code></td><td><code>posted_at</code> ISO ts + <code>date_found</code> ISO</td><td class="tag-current">CURRENT 当前</td></tr>
+    <tr><td><strong>T2 opencli LinkedIn</strong><br><code>opencli_source.py</code></td><td><code>opencli:linkedin:search</code></td><td><code>opencli_linkedin_&lt;id&gt;</code></td><td><code>posted_at</code> ← opencli <code>listed</code> (unvalidated) + <code>date_found</code></td><td class="tag-current">CURRENT 当前</td></tr>
+    <tr><td><strong>Merge / persist</strong><br><code>job_sources.py</code></td><td>passthrough 透传</td><td>preserves 保留来源</td><td>sets <code>date_found</code> at merge / 合并时打 <code>date_found</code></td><td class="tag-current">CURRENT 当前</td></tr>
+    <tr><td><strong>Web search</strong><br><code>llm.py:search_jobs_web</code></td><td><code>web</code></td><td><code>web_&lt;hash&gt;</code></td><td><code>posted</code> = relative string 相对字符串, anchored to <code>date_found</code></td><td class="tag-legacy">LEGACY 遗留</td></tr>
+    <tr><td><strong>Manual add</strong><br><code>app.py:manual_job_add</code></td><td><code>manual</code></td><td><code>manual_&lt;md5&gt;</code></td><td><code>posted</code> = ISO today / 今天的 ISO 日期</td><td class="tag-legacy">LEGACY-ish 半遗留</td></tr>
+    <tr><td><strong>Old crawler / bot</strong></td><td><code>LinkedIn</code>, <code>crawl4ai:*</code>, old <code>greenhouse:*</code></td><td><code>bot_*</code>, <code>web_*</code></td><td><code>posted</code> = ISO <code>"2026-04-14"</code></td><td class="tag-legacy">DEPRECATED 已废弃</td></tr>
+  </tbody>
+</table>
+
+<div class="caveat">
+  <p class="en"><strong>⚠ Two honest caveats the explorers surfaced (not smoothed over):</strong></p>
+  <ul>
+    <li><span class="en">The maps <strong>disagreed</strong> on what T2's <code>posted_at</code> holds — one said clean ISO from LinkedIn <code>listed</code>, another said unvalidated passthrough; the on-disk check found <code>listed</code> is <strong>100% null across all records</strong>. Safest reading: T2 copies whatever opencli returns, unvalidated, and it's frequently empty.</span>
+        <div class="cn">各路探查结果对 T2 的 <code>posted_at</code> <strong>存在分歧</strong>——有的说是来自 LinkedIn <code>listed</code> 的干净 ISO，有的说是未经校验的透传；而实际磁盘检查发现 <code>listed</code> 字段<strong>在所有记录中 100% 为 null</strong>。最稳妥的理解：T2 把 opencli 返回的任何东西原样拷贝、不校验，且经常为空。</div></li>
+    <li><span class="en">The <code>bot_*</code> / <code>crawl4ai:*</code> paths have <strong>no entry point in current code</strong> — reconstructed from on-disk records only. Flagged deprecated rather than claiming to know the writer.</span>
+        <div class="cn"><code>bot_*</code> / <code>crawl4ai:*</code> 路径在<strong>当前代码里找不到入口</strong>——只能从磁盘记录反推。因此标为已废弃，而非妄称知道其写入者。</div></li>
+  </ul>
+</div>
+
+<hr>
+
+<h2>3. Where the messiness comes from <span class="cn">· 混乱的根源（5 个叠加成因）</span></h2>
+
+<p class="en">The mess is not one bug. It's five distinct, compounding causes, each traceable to a concrete fact.</p>
+<p class="cn">这不是单一 bug，而是五个相互叠加的成因，每一个都能对应到具体证据。</p>
+
+<div class="cause">
+  <h3>A. Multiple historical writers, divergent schemas <span class="cn">多代写入者，结构各异</span></h3>
+  <p class="en">Field coverage is segregated by era: <code>company_slug</code> on 100% of greenhouse/ashby records but <strong>0% of linkedin records</strong>. <code>posted_at</code> on 84%, <code>posted</code> on only 16%, <code>employment_type</code> on 1 record, <code>skills</code> empty on 90%, <code>description</code> empty on 34%. A record's <em>shape</em> tells you which generation wrote it.</p>
+  <p class="cn">字段覆盖率按"代际"割裂：<code>company_slug</code> 在 greenhouse/ashby 记录中 100% 存在，但在 <strong>linkedin 记录中为 0%</strong>。<code>posted_at</code> 占 84%，<code>posted</code> 仅 16%，<code>employment_type</code> 只有 1 条，<code>skills</code> 有 90% 为空，<code>description</code> 有 34% 为空。一条记录的<em>结构形状</em>就能告诉你它是哪一代代码写的。</p>
+</div>
+
+<div class="cause">
+  <h3>B. No normalization on merge <span class="cn">合并时不做归一化</span></h3>
+  <p class="en"><code>merge_jobs</code> dedups by id only — whatever shape a producer emits lands on disk forever. There's no "coerce to canonical schema" step, which is <em>why</em> A persists instead of healing.</p>
+  <p class="cn"><code>merge_jobs</code> 只按 id 去重——生产者发出什么形状，就永远以那个形状落盘。没有"统一为规范结构"的环节，这正是成因 A 无法被自愈、反而长期存在的原因。</p>
+</div>
+
+<div class="cause">
+  <h3>C. Date info scattered across 4 inconsistent fields <span class="cn">日期信息散落在 4 个格式不一的字段</span></h3>
+  <p class="en">The single biggest reason it looks messy:</p>
+  <p class="cn">这是"看起来乱"的最大单一原因：</p>
+  <ul>
+    <li><code>posted_at</code> (84%): clean ISO-with-tz <span class="cn-inline">— 干净的带时区 ISO，但只出现在 ATS/API 记录上</span></li>
+    <li><code>posted</code> (16%): a chaotic mix — ISO dates (~45), relative strings (~28), empty (4), <code>"just now"</code> (1) <span class="cn-inline">— 大杂烩：ISO 日期约 45 条、相对字符串约 28 条、空 4 条、<code>"just now"</code> 1 条</span></li>
+    <li><code>date_found</code> (97%): clean ISO date — the anchor for relative strings <span class="cn-inline">— 干净 ISO 日期，是解析相对字符串的锚点</span></li>
+    <li><code>listed</code>: 100% null — a dead field <span class="cn-inline">— 全为 null，一个死字段</span></li>
+  </ul>
+  <p class="en">And <code>cli.py:_job_age_days</code> only understands part of this: it reads absolute dates from <code>posted_at</code> and treats <code>posted</code> as relative. The ~43 legacy records with an <strong>absolute date in <code>posted</code></strong> fall through → <code>age=None</code> → mislabeled "undateable" when they're really just old. <strong>That is the exact mechanism behind your 64 stale records.</strong></p>
+  <p class="cn">而 <code>cli.py:_job_age_days</code> 只理解其中一部分：它从 <code>posted_at</code> 读绝对日期，却把 <code>posted</code> 当作相对字符串。那 ~43 条把<strong>绝对日期写在 <code>posted</code> 里</strong>的遗留记录因此匹配失败 → <code>age=None</code> → 被错误标记为"无法判定日期"，其实它们只是旧而已。<strong>这正是你那 64 条陈旧记录的成因机制。</strong></p>
+</div>
+
+<div class="cause">
+  <h3>D. Append-only, no eviction <span class="cn">只追加，从不淘汰</span></h3>
+  <p class="en">Never removes anything. April records persist 7 weeks later, indefinitely. (Notably <code>seen_jobs.json</code> <em>does</em> prune on 90 days — so the dedup ledger self-cleans, but the pipeline file does not.)</p>
+  <p class="cn">从不删除任何东西。四月的记录在 7 周后依然在，且会一直在。（值得注意的是 <code>seen_jobs.json</code> <em>确实</em>有 90 天的清理——所以去重账本会自清，但 pipeline 文件不会。）</p>
+</div>
+
+<div class="cause">
+  <h3>E. Rejected jobs never ledgered → perpetual churn <span class="cn">被拒职位从不入账 → 永久空转</span></h3>
+  <p class="en"><code>digested.json</code> records only <em>sent</em> jobs, not gate-rejected ones. So every digest run re-loads the same 64 stale records, re-evaluates, re-drops them — forever.</p>
+  <p class="cn"><code>digested.json</code> 只记录<em>已发送</em>的职位，不记录被闸门拒绝的。于是每次 digest 运行都会重新加载同样的 64 条陈旧记录、重新评估、再次丢弃——永远循环。</p>
+</div>
+
+<hr>
+
+<h2>4. The causal chain <span class="cn">· 因果链</span></h2>
+
+<pre>
+Multiple historical writers (A)            多代写入者 (A)
+  └─ divergent schemas + dates in 4 fields (C)    结构各异 + 日期分散在 4 个字段 (C)
+      └─ merge does no normalization (B)          合并不归一化 (B)，仅按 id 去重
+          └─ append-only, no TTL (D)              只追加、无过期 (D) → 四月记录永不离开
+              └─ _job_age_days can't read         _job_age_days 读不懂 posted 里的
+                 absolute dates in `posted` (C)      绝对日期 (C) → 43 条被误标"无法判定"
+                  └─ digested.json ledgers         digested.json 只记已发送、不记被拒
+                     only SENT, not rejected
+                      └─ stale records recompute   陈旧记录每次运行都重算+重丢，
+                         + re-drop every run (E)      永久循环 (E)
+</pre>
+
+<p class="en">So "it looks messy" is accurate and has a precise anatomy: <strong>heterogeneous historical records (A) never normalized (B), carrying dates in four inconsistent fields the age logic only partly reads (C), in a file that never evicts (D), churned endlessly because rejections aren't ledgered (E).</strong> Your <em>current</em> T1/T2 paths are clean — the mess is unevicted legacy sediment plus the missing normalization/eviction/rejection-ledger layer around the merge.</p>
+<p class="cn">所以"看起来乱"既准确、又有精确的解剖结构：<strong>异构的历史记录 (A) 从未被归一化 (B)，日期分散在四个格式不一、而年龄逻辑只读懂一部分的字段里 (C)，存在一个从不淘汰记录的文件中 (D)，又因为被拒记录不入账而被无休止地重算 (E)。</strong>你<em>当前</em>的 T1/T2 路径是干净的——乱的是没被清掉的历史沉积，加上合并环节周围缺失的"归一化 / 淘汰 / 拒绝入账"这一层。</p>
+
+<hr>
+
+<h2>5. What this means for the prune <span class="cn">· 这对"清理"意味着什么</span></h2>
+<p class="en">Deleting the 64 stale records clears the sediment <strong>today</strong>, but causes A–E mean it will slowly re-accumulate unless you also add: (1) a TTL/eviction on merge, and (2) a rejection ledger so gate-dropped jobs aren't re-evaluated forever.</p>
+<p class="cn">删掉那 64 条陈旧记录能<strong>当下</strong>清掉沉积，但 A–E 这些成因意味着：除非你再补上 (1) 合并时的 TTL/淘汰机制，以及 (2) 一个"拒绝账本"让被闸门丢弃的职位不再被反复评估，否则它会慢慢重新堆积起来。</p>
+
+<p class="meta">Relevant code: <code>job_sources.py</code> (merge_jobs / save_pipeline_jobs / load_pipeline_jobs / scheduled_search) · <code>discovery/ats_sources.py</code> · <code>discovery/opencli_source.py</code> · <code>cli.py:_job_age_days</code> · <code>llm.py:search_jobs_web</code> · <code>app.py:manual_job_add</code> · data: <code>pipeline_jobs.json</code>, <code>digested.json</code></p>
+
+</body>
+</html>

@@ -1,9 +1,9 @@
 # JobPilot — TODOs
 
-_Last updated: 2026-05-17_
+_Last updated: 2026-06-04_
 
 ## Current Focus
-End-to-end shipped: 3-variant CV tailor (grad/tech_eng/regtech) + FRAMING_RULES identity layer + per-job `jobpilot tailor` subcommand + page-count check. First 2 real submissions today: Tines (tech_eng) + Bending Spoons (grad). PII separated from tracking, git history scrubbed via filter-repo, GitHub repo recreated and ready to flip public. Next: README polish for portfolio audience, monitor 2-week callback window, then Pillar 3 outreach module.
+Daily routine operational end-to-end: `jobpilot discover` (T1 ATS + T2 opencli) → `jobpilot digest` (Telegram cards with ⭐ Save / Skip buttons) → `jobpilot bot run` daemon records taps to saved.json/skipped.json → batch `jobpilot tailor` saved jobs → log to applications.json. 24 applications submitted to date (7 on 2026-06-04: Ipsus, Stripe, Anthropic, Hadfield Green, Apple, Klaviyo, Version 1). Pipeline pruned 2026-06-04 (475→415, removed 60 stale April legacy records). Next: monitor callback window; structural pipeline-hygiene fix (see new section) deferred until it bites.
 
 ## Open Questions / Blockers
 - ATS threshold 0.75 still a guess — was lowered to 0.60 as interim; unclear if reverted. Verify and calibrate once ≥15 submissions have outcomes (currently 2)
@@ -31,14 +31,24 @@ End-to-end shipped: 3-variant CV tailor (grad/tech_eng/regtech) + FRAMING_RULES 
 ### Review surface (replacement for current Streamlit pipeline tab)
 - [ ] Telegram daily digest bot: pulls discover output, sends top-N ranked jobs with inline buttons (Apply / Skip / Save / Outreach). Pillar 2 + 3 share this surface. `notify.py:send_telegram` already wired in one place; need scheduled cron + ranked digest payload.
 - [ ] Streamlit-lite: trim to 3 tabs (Master CV editor, Story Bank editor, Review Queue with P0/P1/P2 columns). Delete the auto-tailor / evaluate UI — those become CLI-only.
+- [ ] **Bot Phase 3 buttons** — ⭐ Save / Skip on digest cards shipped; add Apply / Tailor / Drop-from-saved actions so a saved job can be fully actioned from Telegram. Replaces the `/tmp/*.py` temp-script bridges currently run by hand each cycle (tailor batch, log applications, move saved→skipped).
 
 ### Discovery layer follow-ups
 - [ ] Merge `~/code/dublin_ai_jobs_bot` into `src/jobpilot/discovery/` — port the IrishJobs.ie scraper for non-LinkedIn coverage. Currently a separate cron pipeline.
 - [ ] Niche-gold P0 scoring: jobs at `target_companies.json` companies with `niche_gold: true` auto-promoted to P0 regardless of keyword overlap
+- [ ] **Digest dedup must also filter `skipped_ids`** — the digest gate excludes applied + already-sent jobs but NOT skipped ones, so a Skipped role can reappear in a later digest. Add `skipped.json` job_ids to the exclusion set in `cli.py:digest`.
+- [ ] **Fuzzy (company, normalized_title) dedup on merge** — the same role from multiple sources lands as separate records (Docusign ML Engineer appeared 6×). Collapse by normalized (company, title) in `job_sources.py:merge_jobs`, which currently dedups on exact `id` only.
 
 ### Validate the ATS loop end-to-end
 - [ ] Run auto-tailor loop live on one real job and verify iteration 2+ targets ATS gaps; screenshot the ATS card for confirmation
 - [ ] Calibrate `ats_threshold` once ≥15 submissions have outcomes; correlate `overall` with response rate
+
+### Pipeline data hygiene (keystone structural fix)
+_Prune on 2026-06-04 cleared the symptom; these stop it re-accumulating. Full anatomy: `docs/discovery_dataflow_analysis.html`. Defer until it actually bites — current bottleneck is callbacks, not pipeline tidiness._
+- [ ] **Canonical `Job` schema (Pydantic) enforced at the merge chokepoint** — `pipeline_jobs.json` accumulates divergent record shapes from ≥4 generations of writers (current `ats:*`/`opencli:*` + legacy `web`/`manual`/`crawl4ai:*`/old `greenhouse:*`); dates are scattered across `posted`/`posted_at`/`date_found`/`listed` in inconsistent formats. Coerce every record to one shape at `job_sources.py:merge_jobs` (the single writer) so source no longer dictates schema.
+- [ ] **TTL / eviction on merge** — pipeline is append-only with no expiry; stale records re-accumulate (the 60 pruned 2026-06-04 were ~7-week-old April cruft). Drop or archive records past N days at merge time; mirror the 90-day prune `seen_jobs.json` already does.
+- [ ] **Rejection ledger for gate-dropped jobs** — `digested.json` records only SENT jobs, so gate-rejected ones recompute and re-drop on every digest run forever. Once TTL lands this is mostly moot for age-rejects; still needed for non-age rejects (not eng-flavored). (low)
+- [ ] (low) **`_job_age_days` absolute-date-in-`posted` parse gap** — ~43 legacy records put an ISO date in `posted`; parser only reads absolute dates from `posted_at`, mislabeling them "undateable" vs "too old". Legacy-only — folds into the schema-normalization work above.
 
 ### Architectural cleanup (lower priority)
 - [ ] Rip out LangGraph — replace 15-node graph with linear `pipeline(job)` function (~100 lines deleted, no behaviour loss). Deferred until it blocks progress.
