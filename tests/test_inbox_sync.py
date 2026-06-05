@@ -18,6 +18,7 @@ from jobpilot.inbox_sync import (
     _normalize_company,
     _parse_from,
     _walk_parts,
+    bootstrap_applications,
     classify,
     match_application,
     update_applications,
@@ -261,6 +262,99 @@ class TestClassifyMocked:
         cls = classify(msg)
         assert cls.category == "interview_invite"
         assert cls.role_guess == "SWE AI"
+
+
+# --- Phase 4.5: bootstrap from unmatched acks -----------------------------
+
+
+class TestBootstrapApplications:
+    def _msg(self, msg_id="m1", from_addr="noreply@anthropic.com", subject="Thanks"):
+        return EmailMessage(
+            account="a@gmail.com", msg_id=msg_id,
+            message_id_header=f"<{msg_id}@x>", thread_id="t1",
+            from_addr=from_addr, from_name="",
+            to_addr="a@gmail.com", subject=subject, body="",
+            date=datetime.now(timezone.utc),
+        )
+
+    def test_creates_row_for_unmatched_ack(self):
+        apps: list[dict] = []
+        msg = self._msg(msg_id="m1", subject="Thank you for applying to Anthropic")
+        cls = Classification("ack", "Anthropic", "Software Engineer", 0.96, "automated receipt")
+        events = bootstrap_applications([(msg, cls)], apps, dry_run=False)
+        assert len(events) == 1
+        assert len(apps) == 1
+        new_app = apps[0]
+        assert new_app["company"] == "Anthropic"
+        assert new_app["title"] == "Software Engineer"
+        assert new_app["status"] == "submitted"
+        assert new_app["source"] == "inbox_sync_bootstrap"
+        assert new_app["job_id"] == "inbox_m1"
+        assert new_app["status_history"][0]["source_email_id"] == "m1"
+        assert events[0]["bootstrap"] is True
+
+    def test_empty_role_gets_placeholder_title(self):
+        apps: list[dict] = []
+        msg = self._msg()
+        cls = Classification("ack", "Klaviyo", "", 0.92, "")
+        bootstrap_applications([(msg, cls)], apps, dry_run=False)
+        assert apps[0]["title"] == "(auto-detected, role unknown)"
+
+    def test_dedup_within_run_same_company(self):
+        apps: list[dict] = []
+        m1 = self._msg(msg_id="m1")
+        m2 = self._msg(msg_id="m2")
+        cls = Classification("ack", "Anthropic", "", 0.95, "")
+        events = bootstrap_applications([(m1, cls), (m2, cls)], apps, dry_run=False)
+        assert len(events) == 1
+        assert len(apps) == 1
+
+    def test_skips_if_company_already_in_apps(self):
+        apps = [{"company": "Anthropic Inc.", "title": "existing", "status": "submitted"}]
+        msg = self._msg()
+        cls = Classification("ack", "Anthropic", "", 0.95, "")
+        events = bootstrap_applications([(msg, cls)], apps, dry_run=False)
+        assert len(events) == 0
+        assert len(apps) == 1  # unchanged
+
+    def test_skips_non_ack_categories(self):
+        apps: list[dict] = []
+        msg = self._msg()
+        for cat in ("rejection", "interview_invite", "info_request", "other"):
+            cls = Classification(cat, "F5", "", 0.95, "")
+            events = bootstrap_applications([(msg, cls)], apps, dry_run=False)
+            assert events == []
+        assert apps == []
+
+    def test_skips_empty_company_guess(self):
+        apps: list[dict] = []
+        msg = self._msg()
+        cls = Classification("ack", "", "Engineer", 0.95, "")
+        events = bootstrap_applications([(msg, cls)], apps, dry_run=False)
+        assert events == []
+        assert apps == []
+
+    def test_dry_run_does_not_mutate(self):
+        apps: list[dict] = []
+        msg = self._msg()
+        cls = Classification("ack", "Anthropic", "", 0.95, "")
+        events = bootstrap_applications([(msg, cls)], apps, dry_run=True)
+        assert len(events) == 1  # event still surfaced
+        assert apps == []  # apps NOT appended
+
+    def test_format_event_bootstrap_variant(self):
+        msg = self._msg(subject="Thank you for applying to Klaviyo")
+        cls = Classification("ack", "Klaviyo", "Backend Engineer", 0.94, "automated receipt")
+        event = {
+            "msg": msg, "cls": cls,
+            "app": {"company": "Klaviyo", "title": "Backend Engineer"},
+            "prev_status": None, "new_status": "submitted", "bootstrap": True,
+        }
+        text = _format_event(event)
+        assert "NEW APPLICATION" in text
+        assert "auto-detected" in text
+        assert "Klaviyo" in text
+        assert "Backend Engineer" in text
 
 
 # --- Event formatting -----------------------------------------------------

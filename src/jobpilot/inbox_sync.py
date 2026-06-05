@@ -418,12 +418,89 @@ def update_applications(
     return events
 
 
+# --- Phase 4.5: auto-bootstrap applications from unmatched acks ----------
+
+
+def bootstrap_applications(
+    unmatched: list[tuple[EmailMessage, Classification]],
+    apps: list[dict],
+    dry_run: bool = False,
+) -> list[dict]:
+    """Auto-create applications.json rows from unmatched ack emails.
+
+    Picks up LinkedIn Easy-Apply submissions and direct ATS acks that Sophie
+    didn't manually log. New rows land at status=submitted with source noted.
+    Idempotent within a run (dedups by normalized company) and against the
+    apps list (won't double-create when a row already exists under a slightly
+    different name). Cross-run dedup is handled upstream via processed_message_ids.
+    """
+    today = date.today().isoformat()
+    events: list[dict] = []
+    seen_in_run: set[str] = set()
+    existing = {_normalize_company(a.get("company", "")) for a in apps if a.get("company")}
+
+    for msg, cls in unmatched:
+        if cls.category != "ack":
+            continue
+        company = cls.company_guess.strip()
+        if not company:
+            continue
+        company_norm = _normalize_company(company)
+        if not company_norm:
+            continue
+        if company_norm in seen_in_run or company_norm in existing:
+            continue
+        seen_in_run.add(company_norm)
+
+        new_app = {
+            "job_id": f"inbox_{msg.msg_id}",
+            "company": company,
+            "title": cls.role_guess or "(auto-detected, role unknown)",
+            "status": "submitted",
+            "source": "inbox_sync_bootstrap",
+            "dates": {"submitted": today},
+            "status_history": [
+                {
+                    "status": "submitted",
+                    "date": today,
+                    "notes": f"[auto-bootstrap from inbox ack] {cls.rationale}",
+                    "source": "gmail",
+                    "source_account": msg.account,
+                    "source_email_id": msg.msg_id,
+                    "classifier_confidence": cls.confidence,
+                }
+            ],
+        }
+        if not dry_run:
+            apps.append(new_app)
+        events.append(
+            {
+                "msg": msg,
+                "cls": cls,
+                "app": new_app,
+                "prev_status": None,
+                "new_status": "submitted",
+                "bootstrap": True,
+            }
+        )
+    return events
+
+
 # --- Telegram push --------------------------------------------------------
 
 
 def _format_event(event: dict) -> str:
     cls: Classification = event["cls"]
     app = event["app"]
+    if event.get("bootstrap"):
+        return (
+            f"✨ NEW APPLICATION (auto-detected)\n"
+            f"{app.get('company','?')} — {app.get('title','?')}\n"
+            f"From: {event['msg'].from_addr}\n"
+            f"Subject: {event['msg'].subject}\n"
+            f"Confidence: {cls.confidence:.2f}\n"
+            f"Reason: {cls.rationale}"
+        )
     icon = {"rejection": "❌", "interview": "🎉", "info_requested": "📝"}.get(
         event["new_status"], "📬"
     )
@@ -490,9 +567,16 @@ def run_inbox_sync(
         triples.append((msg, cls, app))
 
     events = update_applications(triples, dry_run=dry_run)
+    bootstrap_events = bootstrap_applications(unmatched, apps, dry_run=dry_run)
+    all_events = events + bootstrap_events
+
+    bootstrapped_msg_ids = {e["msg"].msg_id for e in bootstrap_events}
+    truly_unmatched = [
+        (m, c) for m, c in unmatched if m.msg_id not in bootstrapped_msg_ids
+    ]
 
     if not dry_run:
-        if events:
+        if all_events:
             APPLICATIONS_PATH.write_text(
                 json.dumps(apps, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
@@ -507,7 +591,7 @@ def run_inbox_sync(
         save_inbox_state(state)
 
     if push_telegram and not dry_run:
-        for event in events:
+        for event in all_events:
             push_event(event)
 
     summary = {
@@ -515,11 +599,17 @@ def run_inbox_sync(
         "classified": len(triples) + len(unmatched),
         "matched": len(triples),
         "events": len(events),
-        "unmatched_count": len(unmatched),
+        "bootstrapped": len(bootstrap_events),
+        "unmatched_count": len(truly_unmatched),
     }
     print(f"\nSummary: {summary}")
-    if unmatched:
-        print("\nUnmatched (no application row found):")
-        for msg, cls in unmatched[:10]:
+    if bootstrap_events:
+        print("\nAuto-added applications from unmatched acks:")
+        for event in bootstrap_events:
+            app = event["app"]
+            print(f"  + {app['company']} — {app['title']}")
+    if truly_unmatched:
+        print("\nUnmatched (no application row found, no action taken):")
+        for msg, cls in truly_unmatched[:10]:
             print(f"  - {cls.category} | {cls.company_guess} | {msg.subject[:50]}")
     return summary
