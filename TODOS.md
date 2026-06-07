@@ -1,6 +1,6 @@
 # JobPilot — TODOs
 
-_Last updated: 2026-06-04_
+_Last updated: 2026-06-07_
 
 ## Current Focus
 Daily routine operational end-to-end: `jobpilot discover` (T1 ATS + T2 opencli) → `jobpilot digest` (Telegram cards with ⭐ Save / Skip buttons) → `jobpilot bot run` daemon records taps to saved.json/skipped.json → batch `jobpilot tailor` saved jobs → log to applications.json. 24 applications submitted to date (7 on 2026-06-04: Ipsus, Stripe, Anthropic, Hadfield Green, Apple, Klaviyo, Version 1). Pipeline pruned 2026-06-04 (475→415, removed 60 stale April legacy records). Next: monitor callback window; structural pipeline-hygiene fix (see new section) deferred until it bites.
@@ -31,7 +31,6 @@ Daily routine operational end-to-end: `jobpilot discover` (T1 ATS + T2 opencli) 
 ### Review surface (replacement for current Streamlit pipeline tab)
 - [ ] Telegram daily digest bot: pulls discover output, sends top-N ranked jobs with inline buttons (Apply / Skip / Save / Outreach). Pillar 2 + 3 share this surface. `notify.py:send_telegram` already wired in one place; need scheduled cron + ranked digest payload.
 - [ ] Streamlit-lite: trim to 3 tabs (Master CV editor, Story Bank editor, Review Queue with P0/P1/P2 columns). Delete the auto-tailor / evaluate UI — those become CLI-only.
-- [ ] **Bot Phase 3 buttons** — ⭐ Save / Skip on digest cards shipped; add Apply / Tailor / Drop-from-saved actions so a saved job can be fully actioned from Telegram. Replaces the `/tmp/*.py` temp-script bridges currently run by hand each cycle (tailor batch, log applications, move saved→skipped).
 
 ### Discovery layer follow-ups
 - [ ] Merge `~/code/dublin_ai_jobs_bot` into `src/jobpilot/discovery/` — port the IrishJobs.ie scraper for non-LinkedIn coverage. Currently a separate cron pipeline.
