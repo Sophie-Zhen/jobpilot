@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  jobpilot inbox-sync launchd UserAgent — template.
+
+  Setup (run once):
+    cp infra/launchd/inbox-sync.plist.example \
+       ~/Library/LaunchAgents/com.sophie.jobpilot.inbox-sync.plist
+    # (edit paths below if your username / conda env / repo location differ)
+    launchctl load ~/Library/LaunchAgents/com.sophie.jobpilot.inbox-sync.plist
+    launchctl list | grep jobpilot       # confirm registered
+    launchctl start com.sophie.jobpilot.inbox-sync   # fire once now to smoke-test
+
+  Inspect:
+    tail -f ~/Library/Logs/jobpilot-inbox-sync.log
+
+  Disable / remove:
+    launchctl unload ~/Library/LaunchAgents/com.sophie.jobpilot.inbox-sync.plist
+    rm ~/Library/LaunchAgents/com.sophie.jobpilot.inbox-sync.plist
+
+  --non-interactive prevents the OAuth browser flow inside the daemon. When the
+  7-day testing-mode grant lapses, the job sends a Telegram alert and exits 1;
+  Sophie then runs `jobpilot inbox-sync` manually to re-consent.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.sophie.jobpilot.inbox-sync</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/sophie/miniconda3/envs/jobpilot/bin/jobpilot</string>
+        <string>inbox-sync</string>
+        <string>--non-interactive</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/sophie/code/jobpilot</string>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/sophie/Library/Logs/jobpilot-inbox-sync.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/sophie/Library/Logs/jobpilot-inbox-sync.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/sophie/miniconda3/envs/jobpilot/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/sophie</string>
+    </dict>
+</dict>
+</plist>

@@ -65,7 +65,8 @@ Scheduled mode (cron): skips all review interrupts, saves scored jobs for later 
 | `src/jobpilot/discovery/opencli_source.py` | Tier-2 discovery: LinkedIn/Indeed scraping via opencli |
 | `src/jobpilot/api.py` | FastAPI backend exposing pipeline data |
 | `src/jobpilot/notify.py` | Telegram notification helpers |
-| `src/jobpilot/inbox_sync.py` | Phase 4 + 4.5: multi-account Gmail → applications.json. OAuth per account, LLM classifier (rejection/interview/info_request/ack/other), fuzzy company match, Telegram push on status change. Phase 4.5 auto-bootstraps new rows from unmatched ack emails (LinkedIn Easy-Apply submissions Sophie didn't manually log). Read-only on email side; never replies. |
+| `src/jobpilot/inbox_sync.py` | Phase 4 + 4.5 + 4.6: multi-account Gmail → applications.json. OAuth per account, LLM classifier (rejection/interview/info_request/ack/other), fuzzy company match, Telegram push on status change. Phase 4.5 auto-bootstraps new rows from unmatched ack emails. Phase 4.6 adds `--non-interactive` mode: when an OAuth grant expires under launchd, push a Telegram re-auth alert and exit non-zero instead of opening a browser. Read-only on email side; never replies. |
+| `infra/launchd/inbox-sync.plist.example` | macOS launchd UserAgent template — runs `jobpilot inbox-sync --non-interactive` at 9 AM daily. Copy to `~/Library/LaunchAgents/` then `launchctl load`. Setup notes in the file header. |
 | `src/jobpilot/stories.py` | Story Pydantic model, StoryBank class (CRUD, Claude-powered relevance ranking, keyword fallback, dedup) |
 | `src/jobpilot/renderer.py` | LaTeX escaping (placeholder-based to avoid double-escape), Jinja2 custom delimiters, pdflatex compilation |
 | `src/jobpilot/graph.py` | LangGraph StateGraph wiring — 14 nodes |

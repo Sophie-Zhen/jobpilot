@@ -384,12 +384,17 @@ def app_update(args: argparse.Namespace) -> None:
 def inbox_sync(args: argparse.Namespace) -> None:
     from jobpilot.inbox_sync import run_inbox_sync
 
-    run_inbox_sync(
+    summary = run_inbox_sync(
         query=args.query,
         dry_run=args.dry_run,
         account_filter=args.account,
         push_telegram=not args.no_telegram,
+        non_interactive=args.non_interactive,
     )
+    # Surface auth failures to the shell so launchd marks the run as failed
+    # and Sophie can grep her log for the actual error.
+    if summary.get("auth_failures"):
+        sys.exit(1)
 
 
 def app_feedback(args: argparse.Namespace) -> None:
@@ -1289,6 +1294,11 @@ def main() -> None:
     inbox_parser.add_argument(
         "--no-telegram", action="store_true",
         help="Skip Telegram push even on status-change events",
+    )
+    inbox_parser.add_argument(
+        "--non-interactive", action="store_true",
+        help="Don't open a browser if OAuth refresh fails; push Telegram alert "
+             "and exit non-zero instead. Use for launchd/cron runs.",
     )
     inbox_parser.set_defaults(func=inbox_sync)
 
