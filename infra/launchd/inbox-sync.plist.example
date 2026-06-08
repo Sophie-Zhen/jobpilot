@@ -37,10 +37,18 @@
     <key>WorkingDirectory</key>
     <string>/Users/sophie/code/jobpilot</string>
 
+    <!--
+      Fires at 21:00 (9 PM) local time, daily.
+      Catch-up behavior is the launchd default for StartCalendarInterval:
+      if the Mac is asleep / off at fire time, the job runs once when the
+      system next wakes. Multiple missed intervals coalesce into a single
+      catch-up fire (per launchd.plist(5) man page), so a long shutdown
+      won't queue up multiple back-to-back runs.
+    -->
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>
-        <integer>9</integer>
+        <integer>21</integer>
         <key>Minute</key>
         <integer>0</integer>
     </dict>
