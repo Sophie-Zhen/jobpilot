@@ -11,6 +11,7 @@ import pytest
 
 from jobpilot import inbox_sync
 from jobpilot.inbox_sync import (
+    AuthExpired,
     Classification,
     EmailMessage,
     _extract_body,
@@ -21,6 +22,7 @@ from jobpilot.inbox_sync import (
     bootstrap_applications,
     classify,
     match_application,
+    push_auth_expired_alert,
     update_applications,
 )
 
@@ -262,6 +264,75 @@ class TestClassifyMocked:
         cls = classify(msg)
         assert cls.category == "interview_invite"
         assert cls.role_guess == "SWE AI"
+
+
+# --- Phase 4.6: non-interactive auth handling -----------------------------
+
+
+class TestNonInteractiveAuth:
+    """Verifies the launchd-friendly auth failure path doesn't block on browser."""
+
+    def _account(self):
+        return {"email": "test@example.com", "token": "token_test.json"}
+
+    def test_auth_expired_carries_account_email(self):
+        exc = AuthExpired("foo@gmail.com")
+        assert exc.account_email == "foo@gmail.com"
+        assert "foo@gmail.com" in str(exc)
+
+    def test_build_service_non_interactive_raises_when_no_token(self, monkeypatch, tmp_path):
+        """No token file + non_interactive=True → AuthExpired, no browser."""
+        import jobpilot.inbox_sync as mod
+
+        monkeypatch.setattr(mod, "CONFIG_DIR", tmp_path)
+        monkeypatch.setattr(mod, "CREDENTIALS_PATH", tmp_path / "credentials.json")
+        # Sentinel guard: any attempt to start the local OAuth server should fail loud.
+        called = {"flow": False}
+
+        class _NoServerFlow:
+            @staticmethod
+            def from_client_secrets_file(*a, **kw):
+                called["flow"] = True
+                raise AssertionError("non_interactive should never reach run_local_server")
+
+        # Need to patch the import target inside _build_service.
+        import sys as _sys
+        fake_module = type(_sys)("google_auth_oauthlib.flow")
+        fake_module.InstalledAppFlow = _NoServerFlow
+        monkeypatch.setitem(_sys.modules, "google_auth_oauthlib.flow", fake_module)
+
+        with pytest.raises(AuthExpired) as exc_info:
+            mod._build_service(self._account(), non_interactive=True)
+        assert exc_info.value.account_email == "test@example.com"
+        assert called["flow"] is False
+
+    def test_push_auth_expired_alert_calls_send_telegram(self, monkeypatch):
+        sent = {}
+
+        def fake_send(text, parse_mode=None, **kw):
+            sent["text"] = text
+            sent["parse_mode"] = parse_mode
+            return True
+
+        monkeypatch.setattr("jobpilot.notify.send_telegram", fake_send)
+        ok = push_auth_expired_alert(["sophieineu@gmail.com", "second@gmail.com"])
+        assert ok is True
+        assert "sophieineu@gmail.com" in sent["text"]
+        assert "second@gmail.com" in sent["text"]
+        assert "OAuth refresh failed" in sent["text"]
+        assert sent["parse_mode"] is None
+
+    def test_push_auth_expired_alert_no_op_on_empty_list(self, monkeypatch):
+        sent = {"called": False}
+
+        def fake_send(text, parse_mode=None, **kw):
+            sent["called"] = True
+            return True
+
+        monkeypatch.setattr("jobpilot.notify.send_telegram", fake_send)
+        ok = push_auth_expired_alert([])
+        assert ok is False
+        assert sent["called"] is False
 
 
 # --- Phase 4.5: bootstrap from unmatched acks -----------------------------

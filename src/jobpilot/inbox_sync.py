@@ -136,8 +136,28 @@ def save_inbox_state(state: dict) -> None:
 # --- OAuth / service ------------------------------------------------------
 
 
-def _build_service(account: dict):
-    """Return a Gmail API service for one account. Triggers consent if missing."""
+class AuthExpired(Exception):
+    """Raised when an OAuth grant is dead and we're running non-interactively.
+
+    7-day testing-mode expiry or a user-revoked grant both surface as RefreshError
+    from creds.refresh(). In interactive runs we wipe the stale token and let the
+    browser consent flow fix it; under launchd there's no one to click "Authorize",
+    so we raise this and let the orchestrator push a Telegram alert instead.
+    """
+
+    def __init__(self, account_email: str):
+        self.account_email = account_email
+        super().__init__(f"OAuth refresh expired/revoked for {account_email}")
+
+
+def _build_service(account: dict, non_interactive: bool = False):
+    """Return a Gmail API service for one account. Triggers consent if missing.
+
+    With ``non_interactive=True`` the function will NEVER open a browser; it
+    raises :class:`AuthExpired` instead so the caller can surface a Telegram
+    alert and exit gracefully (matches the launchd cron use case).
+    """
+    from google.auth.exceptions import RefreshError
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
     from google_auth_oauthlib.flow import InstalledAppFlow
@@ -148,8 +168,17 @@ def _build_service(account: dict):
     if token_path.exists():
         creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
+        try:
+            creds.refresh(Request())
+        except RefreshError:
+            print(f"  token for {account['email']} expired/revoked")
+            token_path.unlink(missing_ok=True)
+            creds = None
+            if non_interactive:
+                raise AuthExpired(account["email"])
     if not creds or not creds.valid:
+        if non_interactive:
+            raise AuthExpired(account["email"])
         if not CREDENTIALS_PATH.exists():
             raise FileNotFoundError(
                 f"Missing OAuth credentials at {CREDENTIALS_PATH}. "
@@ -252,9 +281,12 @@ def _parse_message(service, account_email: str, msg_id: str) -> EmailMessage:
 
 
 def fetch_account_messages(
-    account: dict, query: str, max_results: int = 100
+    account: dict,
+    query: str,
+    max_results: int = 100,
+    non_interactive: bool = False,
 ) -> list[EmailMessage]:
-    service = _build_service(account)
+    service = _build_service(account, non_interactive=non_interactive)
     resp = (
         service.users()
         .messages()
@@ -278,16 +310,30 @@ def fetch_all_accounts(
     state: dict,
     account_filter: str | None = None,
     max_results: int = 100,
-) -> list[EmailMessage]:
-    """Fetch from all accounts, dedup by Message-ID header (cross-account safe)."""
+    non_interactive: bool = False,
+) -> tuple[list[EmailMessage], list[str]]:
+    """Fetch from all accounts, dedup by Message-ID header (cross-account safe).
+
+    Returns ``(messages, auth_failure_emails)``. Under ``non_interactive``,
+    accounts whose token can't be refreshed surface in ``auth_failure_emails``
+    instead of opening a browser; the caller decides whether to alert / exit
+    non-zero.
+    """
     seen: set[str] = set(state.get("processed_message_ids", []))
     seen_this_run: set[str] = set()
     merged: list[EmailMessage] = []
+    auth_failures: list[str] = []
     for account in load_accounts():
         if account_filter and account["email"] != account_filter:
             continue
         try:
-            msgs = fetch_account_messages(account, query, max_results=max_results)
+            msgs = fetch_account_messages(
+                account, query, max_results=max_results, non_interactive=non_interactive
+            )
+        except AuthExpired as exc:
+            print(f"  AUTH EXPIRED: {exc.account_email} — needs interactive re-consent")
+            auth_failures.append(exc.account_email)
+            continue
         except Exception as exc:
             print(f"  ERROR fetching {account['email']}: {exc}")
             continue
@@ -298,7 +344,7 @@ def fetch_all_accounts(
                 continue
             seen_this_run.add(dedup_key)
             merged.append(m)
-    return merged
+    return merged, auth_failures
 
 
 # --- Classifier -----------------------------------------------------------
@@ -520,6 +566,20 @@ def push_event(event: dict) -> bool:
     return send_telegram(_format_event(event), parse_mode=None)
 
 
+def push_auth_expired_alert(account_emails: list[str]) -> bool:
+    """Telegram alert when launchd run hits dead OAuth grants."""
+    from jobpilot.notify import send_telegram
+
+    if not account_emails:
+        return False
+    accounts = ", ".join(account_emails)
+    msg = (
+        f"⚠️ jobpilot inbox-sync: OAuth refresh failed for {accounts}.\n"
+        f"Run `jobpilot inbox-sync` on your Mac to re-consent."
+    )
+    return send_telegram(msg, parse_mode=None)
+
+
 # --- Orchestrator ---------------------------------------------------------
 
 
@@ -528,8 +588,16 @@ def run_inbox_sync(
     dry_run: bool = False,
     account_filter: str | None = None,
     push_telegram: bool = True,
+    non_interactive: bool = False,
 ) -> dict:
-    """End-to-end: fetch → classify → match → update → push. Returns summary dict."""
+    """End-to-end: fetch → classify → match → update → push. Returns summary dict.
+
+    ``non_interactive=True`` is for unattended runs (launchd cron): when a
+    token can't be refreshed, the function pushes a Telegram alert naming the
+    affected account(s) and records the failure in the returned summary
+    (``auth_failures`` key) instead of opening a browser. The CLI uses that to
+    exit non-zero so launchd surfaces the problem in its log.
+    """
     query = query or DEFAULT_QUERY
     state = load_inbox_state()
 
@@ -537,12 +605,23 @@ def run_inbox_sync(
     if dry_run:
         print("DRY RUN — no writes to applications.json or Telegram\n")
 
-    messages = fetch_all_accounts(
-        query=query, state=state, account_filter=account_filter
+    messages, auth_failures = fetch_all_accounts(
+        query=query,
+        state=state,
+        account_filter=account_filter,
+        non_interactive=non_interactive,
     )
+    if auth_failures and push_telegram and not dry_run:
+        push_auth_expired_alert(auth_failures)
     print(f"Fetched {len(messages)} unique messages across accounts")
     if not messages:
-        return {"messages": 0, "classified": 0, "matched": 0, "events": 0}
+        return {
+            "messages": 0,
+            "classified": 0,
+            "matched": 0,
+            "events": 0,
+            "auth_failures": auth_failures,
+        }
 
     apps = (
         json.loads(APPLICATIONS_PATH.read_text(encoding="utf-8"))
@@ -552,13 +631,19 @@ def run_inbox_sync(
 
     triples: list[tuple[EmailMessage, Classification, dict]] = []
     unmatched: list[tuple[EmailMessage, Classification]] = []
+    classified_messages: list[EmailMessage] = []
     for i, msg in enumerate(messages, 1):
         print(f"  [{i}/{len(messages)}] {msg.subject[:60]}  from {msg.from_addr}")
         try:
             cls = classify(msg)
         except Exception as exc:
+            # Do NOT mark the message processed — leave it for the next run to
+            # retry. Otherwise a transient classifier failure (missing claude
+            # CLI in launchd PATH, network blip, rate limit) would silently
+            # drop the email forever.
             print(f"    classify failed: {exc}")
             continue
+        classified_messages.append(msg)
         print(f"    -> {cls.category} (conf={cls.confidence:.2f}) {cls.company_guess}")
         app = match_application(apps, cls, msg)
         if app is None:
@@ -581,9 +666,11 @@ def run_inbox_sync(
                 json.dumps(apps, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
-        # Record processed message IDs so we don't reprocess on next run.
+        # Record only successfully-classified messages as processed so a
+        # transient classifier failure (missing CLI on PATH, rate limit, etc.)
+        # can be retried on the next run rather than silently lost.
         pmi = state.setdefault("processed_message_ids", [])
-        for m in messages:
+        for m in classified_messages:
             key = m.message_id_header or f"{m.account}:{m.msg_id}"
             if key not in pmi:
                 pmi.append(key)
@@ -601,6 +688,7 @@ def run_inbox_sync(
         "events": len(events),
         "bootstrapped": len(bootstrap_events),
         "unmatched_count": len(truly_unmatched),
+        "auth_failures": auth_failures,
     }
     print(f"\nSummary: {summary}")
     if bootstrap_events:

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  jobpilot inbox-sync launchd UserAgent — template.
+
+  Setup (run once):
+    cp infra/launchd/inbox-sync.plist.example \
+       ~/Library/LaunchAgents/com.sophie.jobpilot.inbox-sync.plist
+    # (edit paths below if your username / conda env / repo location differ)
+    launchctl load ~/Library/LaunchAgents/com.sophie.jobpilot.inbox-sync.plist
+    launchctl list | grep jobpilot       # confirm registered
+    launchctl start com.sophie.jobpilot.inbox-sync   # fire once now to smoke-test
+
+  Inspect:
+    tail -f ~/Library/Logs/jobpilot-inbox-sync.log
+
+  Disable / remove:
+    launchctl unload ~/Library/LaunchAgents/com.sophie.jobpilot.inbox-sync.plist
+    rm ~/Library/LaunchAgents/com.sophie.jobpilot.inbox-sync.plist
+
+  --non-interactive prevents the OAuth browser flow inside the daemon. When the
+  7-day testing-mode grant lapses, the job sends a Telegram alert and exits 1;
+  Sophie then runs `jobpilot inbox-sync` manually to re-consent.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.sophie.jobpilot.inbox-sync</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/sophie/miniconda3/envs/jobpilot/bin/jobpilot</string>
+        <string>inbox-sync</string>
+        <string>--non-interactive</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/sophie/code/jobpilot</string>
+
+    <!--
+      Fires at 21:00 (9 PM) local time, daily.
+      Catch-up behavior is the launchd default for StartCalendarInterval:
+      if the Mac is asleep / off at fire time, the job runs once when the
+      system next wakes. Multiple missed intervals coalesce into a single
+      catch-up fire (per launchd.plist(5) man page), so a long shutdown
+      won't queue up multiple back-to-back runs.
+    -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>21</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/sophie/Library/Logs/jobpilot-inbox-sync.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/sophie/Library/Logs/jobpilot-inbox-sync.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!--
+          PATH must include:
+            - ~/.local/bin             (claude CLI — required for all classifier LLM calls)
+            - <conda env>/bin          (jobpilot script + python + python-telegram-bot etc.)
+          launchd jobs do NOT inherit your interactive shell's PATH, so be explicit here.
+        -->
+        <key>PATH</key>
+        <string>/Users/sophie/.local/bin:/Users/sophie/miniconda3/envs/jobpilot/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/sophie</string>
+    </dict>
+</dict>
+</plist>

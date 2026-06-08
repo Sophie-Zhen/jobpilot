@@ -255,8 +255,12 @@ async def cmd_start(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if chat is None:
         return
     await chat.send_message(
-        "JobPilot bot online. Run `jobpilot digest` from your laptop to "
-        "get cards here; tap Save to bookmark or Skip to drop."
+        "JobPilot bot online.\n"
+        "• Run `jobpilot digest` from your laptop to get job cards here; "
+        "tap Save to bookmark or Skip to drop.\n"
+        "• `/sync` — pull recent application emails into applications.json "
+        "right now (same as running `jobemail` on Mac).\n"
+        "• `/ping` — health check."
     )
 
 
@@ -267,6 +271,42 @@ async def cmd_ping(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if chat is None:
         return
     await chat.send_message("pong")
+
+
+async def cmd_sync(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Trigger ``jobpilot inbox-sync`` from Telegram. Same effect as `jobemail`."""
+    if not _is_authorized(update):
+        return
+    chat = update.effective_chat
+    if chat is None:
+        return
+    await chat.send_message("🔄 Running inbox-sync (30-90s)...")
+    try:
+        from jobpilot.inbox_sync import run_inbox_sync
+
+        loop = asyncio.get_running_loop()
+        summary = await loop.run_in_executor(
+            None,
+            lambda: run_inbox_sync(non_interactive=True, push_telegram=True),
+        )
+    except Exception as exc:
+        _LOG.exception("inbox-sync via /sync failed")
+        await chat.send_message(f"❌ inbox-sync failed: {exc}")
+        return
+    lines = [
+        "✅ Inbox-sync done",
+        f"Fetched: {summary.get('messages', 0)} unique messages",
+        f"Events fired: {summary.get('events', 0)}",
+        f"Auto-bootstrapped: {summary.get('bootstrapped', 0)}",
+        f"Unmatched: {summary.get('unmatched_count', 0)}",
+    ]
+    if summary.get("auth_failures"):
+        lines.append(
+            "⚠️ OAuth expired for: "
+            + ", ".join(summary["auth_failures"])
+            + " — run `jobemail` on your Mac to re-consent"
+        )
+    await chat.send_message("\n".join(lines))
 
 
 def _note(status: str) -> str:
@@ -424,6 +464,7 @@ def run_bot() -> None:
     app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("ping", cmd_ping))
+    app.add_handler(CommandHandler("sync", cmd_sync))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
     _LOG.info("Bot online, polling for callback queries...")
