@@ -64,8 +64,14 @@
 
     <key>EnvironmentVariables</key>
     <dict>
+        <!--
+          PATH must include:
+            - ~/.local/bin             (claude CLI — required for all classifier LLM calls)
+            - <conda env>/bin          (jobpilot script + python + python-telegram-bot etc.)
+          launchd jobs do NOT inherit your interactive shell's PATH, so be explicit here.
+        -->
         <key>PATH</key>
-        <string>/Users/sophie/miniconda3/envs/jobpilot/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>/Users/sophie/.local/bin:/Users/sophie/miniconda3/envs/jobpilot/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>HOME</key>
         <string>/Users/sophie</string>
     </dict>

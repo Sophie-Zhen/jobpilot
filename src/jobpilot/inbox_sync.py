@@ -631,13 +631,19 @@ def run_inbox_sync(
 
     triples: list[tuple[EmailMessage, Classification, dict]] = []
     unmatched: list[tuple[EmailMessage, Classification]] = []
+    classified_messages: list[EmailMessage] = []
     for i, msg in enumerate(messages, 1):
         print(f"  [{i}/{len(messages)}] {msg.subject[:60]}  from {msg.from_addr}")
         try:
             cls = classify(msg)
         except Exception as exc:
+            # Do NOT mark the message processed — leave it for the next run to
+            # retry. Otherwise a transient classifier failure (missing claude
+            # CLI in launchd PATH, network blip, rate limit) would silently
+            # drop the email forever.
             print(f"    classify failed: {exc}")
             continue
+        classified_messages.append(msg)
         print(f"    -> {cls.category} (conf={cls.confidence:.2f}) {cls.company_guess}")
         app = match_application(apps, cls, msg)
         if app is None:
@@ -660,9 +666,11 @@ def run_inbox_sync(
                 json.dumps(apps, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
-        # Record processed message IDs so we don't reprocess on next run.
+        # Record only successfully-classified messages as processed so a
+        # transient classifier failure (missing CLI on PATH, rate limit, etc.)
+        # can be retried on the next run rather than silently lost.
         pmi = state.setdefault("processed_message_ids", [])
-        for m in messages:
+        for m in classified_messages:
             key = m.message_id_header or f"{m.account}:{m.msg_id}"
             if key not in pmi:
                 pmi.append(key)
