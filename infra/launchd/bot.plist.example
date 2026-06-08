@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  jobpilot bot daemon launchd UserAgent — template.
+
+  Long-running Telegram polling daemon. RunAtLoad=true starts it on login;
+  KeepAlive=true auto-restarts on crash. ThrottleInterval throttles restart
+  attempts to once per 30 seconds, so a persistent failure won't tight-loop.
+
+  Handles:
+   - Digest card button taps (Save / Skip / Tailor / Applied / Drop)
+   - /start, /ping, /sync commands
+
+  Setup (run once):
+    cp infra/launchd/bot.plist.example \
+       ~/Library/LaunchAgents/com.sophie.jobpilot.bot.plist
+    launchctl load ~/Library/LaunchAgents/com.sophie.jobpilot.bot.plist
+    launchctl list | grep jobpilot
+
+  Inspect:
+    tail -f ~/Library/Logs/jobpilot-bot.log
+
+  Restart after pulling new code (kicks the running instance + re-runs):
+    launchctl kickstart -k gui/$UID/com.sophie.jobpilot.bot
+
+  Stop entirely:
+    launchctl unload ~/Library/LaunchAgents/com.sophie.jobpilot.bot.plist
+
+  PATH includes ~/.local/bin so the bot's /sync handler can in turn invoke
+  the claude CLI for classification.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.sophie.jobpilot.bot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/sophie/miniconda3/envs/jobpilot/bin/jobpilot</string>
+        <string>bot</string>
+        <string>run</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/sophie/code/jobpilot</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/sophie/Library/Logs/jobpilot-bot.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/sophie/Library/Logs/jobpilot-bot.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/sophie/.local/bin:/Users/sophie/miniconda3/envs/jobpilot/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/sophie</string>
+    </dict>
+</dict>
+</plist>
