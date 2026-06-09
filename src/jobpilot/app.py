@@ -493,6 +493,25 @@ with tab_pipeline:
             job = st.session_state["working_job"]
             st.subheader(f"Working on: {job['title']} at {job['company']}")
 
+            # Referral hint — ask for a referral BEFORE applying (10x lever, book ch.2).
+            try:
+                from jobpilot.config import load_settings as _ls_ref
+                from jobpilot.referrals import find_referrers, load_connections
+
+                _conns = load_connections(_ls_ref().connections_csv)
+                refs = find_referrers(job.get("company", ""), _conns) if _conns else []
+                if refs:
+                    names = ", ".join(
+                        r.name + (f" ({r.position})" if r.position else "") for r in refs[:6]
+                    )
+                    more = f" — and {len(refs) - 6} more" if len(refs) > 6 else ""
+                    st.success(
+                        f"🤝 **{len(refs)} connection(s) at {job.get('company', '')}** — "
+                        f"ask for a referral *before* applying: {names}{more}"
+                    )
+            except Exception:
+                pass
+
             # Load saved work from disk if not in session
             saved = _load_work(job["id"])
             if saved and "working_cv" not in st.session_state:

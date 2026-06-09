@@ -546,6 +546,41 @@ def search_jobs(args: argparse.Namespace) -> None:
     print(f"  Query: {result.get('query', '?')} | {result.get('search_info', '')}")
 
 
+def referrals_cmd(args: argparse.Namespace) -> None:
+    """Surface 1st-degree LinkedIn connections for referrals (book ch.2, the 10x lever).
+
+    With a company arg: who could refer you there. Without: your top companies by
+    connection count — networking targets to deepen.
+    """
+    from jobpilot.config import load_settings
+    from jobpilot.referrals import find_referrers, load_connections, top_companies
+
+    csv_path = load_settings().connections_csv
+    conns = load_connections(csv_path)
+    if not conns:
+        print(f"No connections loaded from {csv_path}.")
+        print("Export Connections.csv from LinkedIn (Settings → Data Privacy → Get a")
+        print("copy of your data → Connections) and save it there (or set CONNECTIONS_CSV).")
+        return
+
+    company = " ".join(args.company).strip() if args.company else ""
+    if company:
+        refs = find_referrers(company, conns)
+        if not refs:
+            print(f"No connections at '{company}' among {len(conns)} contacts.")
+            return
+        print(f"{len(refs)} connection(s) at {company} — ask BEFORE applying:")
+        for r in refs:
+            pos = f" — {r.position}" if r.position else ""
+            url = f"  {r.url}" if r.url else ""
+            print(f"  • {r.name}{pos}{url}")
+        return
+
+    print(f"{len(conns)} connections loaded. Top companies (networking targets):")
+    for name, count in top_companies(conns, n=15):
+        print(f"  {count:>3}  {name}")
+
+
 def discover(args: argparse.Namespace) -> None:
     """Tier-1 (ATS poll) + Tier-2 (opencli LinkedIn) discovery.
 
@@ -1207,6 +1242,18 @@ def main() -> None:
     bot_sub = bot_parser.add_subparsers(dest="bot_command", help="Bot commands")
     bot_run_parser = bot_sub.add_parser("run", help="Start the long-polling daemon")
     bot_run_parser.set_defaults(func=bot_run)
+
+    # referrals
+    referrals_parser = subparsers.add_parser(
+        "referrals",
+        help="Find 1st-degree LinkedIn connections at a company (referral discovery)",
+    )
+    referrals_parser.add_argument(
+        "company",
+        nargs="*",
+        help="Company name to find referrers at; omit to list top companies by connection count",
+    )
+    referrals_parser.set_defaults(func=referrals_cmd)
 
     # gaps
     gaps_parser = subparsers.add_parser(

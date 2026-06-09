@@ -60,6 +60,7 @@ Scheduled mode (cron): skips all review interrupts, saves scored jobs for later 
 | `src/jobpilot/agents.py` | LangGraph nodes: load_profile, load_stories, search_jobs, score_jobs, review_jobs, fetch_jds, tailor_resume, review_tailored, evaluate_cv, review_evaluation, render_pdfs, apply_jobs, learning_progress, learning_plan |
 | `src/jobpilot/ats.py` | Resume relevance + parseability check driving the auto-tailor loop. NOT a "beat the bot" tool — tech ATSes don't auto-reject; this is a human-7-second-scan relevance proxy. Keyword coverage + `keyword_stuffing_penalty` (recruiters penalize stuffing) + PDF parseability + format audit |
 | `src/jobpilot/gaps.py` | Skill gap analysis: aggregate ATS keyword gaps across JDs |
+| `src/jobpilot/referrals.py` | Referral discovery (book ch.2, the 10x lever). Loads the candidate's LinkedIn `Connections.csv` export, token-subset company match → who can refer you. Surfaced in the pipeline tab (per working job) + `jobpilot referrals [company]` CLI. CSV path = `Settings.connections_csv` (env `CONNECTIONS_CSV`, default `data/connections.csv`, gitignored PII). No scraping — manual export only. |
 | `src/jobpilot/job_sources.py` | Job search providers (jsearch, linkedin, active_jobs_db, arbeitnow, remotive), dedup filter (seen_jobs.json + applications.json), budget tracking |
 | `src/jobpilot/discovery/ats_sources.py` | Tier-1 discovery: poll target-company ATS endpoints for Dublin jobs |
 | `src/jobpilot/discovery/opencli_source.py` | Tier-2 discovery: LinkedIn/Indeed scraping via opencli |

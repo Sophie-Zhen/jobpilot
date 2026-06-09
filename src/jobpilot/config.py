@@ -19,6 +19,7 @@ class Settings:
     arbeitnow_api_url: str = "https://www.arbeitnow.com/api/job-board-api"
     scheduled: bool = False
     output_dir: str = "output"
+    connections_csv: str = "data/connections.csv"
 
 
 def load_settings() -> Settings:
@@ -33,5 +34,6 @@ def load_settings() -> Settings:
         rapidapi_key=os.getenv("RAPIDAPI_KEY", ""),
         remotive_api_url=os.getenv("REMOTIVE_API_URL", "https://remotive.com/api/remote-jobs"),
         arbeitnow_api_url=os.getenv("ARBEITNOW_API_URL", "https://www.arbeitnow.com/api/job-board-api"),
+        connections_csv=os.getenv("CONNECTIONS_CSV", "data/connections.csv"),
     )
 
