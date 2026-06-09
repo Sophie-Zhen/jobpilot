@@ -7,7 +7,7 @@ Daily routine operational end-to-end: `jobpilot discover` (T1 ATS + T2 opencli) 
 
 ## Open Questions / Blockers
 - ATS threshold 0.75 still a guess — was lowered to 0.60 as interim; unclear if reverted. Verify and calibrate once ≥15 submissions have outcomes (currently 2)
-- Decide whether to migrate from `claude -p` CLI to Anthropic SDK before doing prompt caching (REDESIGN week-1 #5)
+- Decide whether to migrate from `claude -p` CLI to Anthropic SDK before doing prompt caching
 - Split hunting time: deep-outreach flywheel (Compliance Orchestrator + warm intros) vs jobpilot volume. Currently 100% volume (2 apps shipped today, 0 outreach). Recalibrate after 2-week callback window.
 - LangGraph teardown deferred — watch whether the 15-node orchestrator becomes maintenance drag before its payoff
 
@@ -50,7 +50,7 @@ _Prune on 2026-06-04 cleared the symptom; these stop it re-accumulating. Full an
 
 ### Architectural cleanup (lower priority)
 - [ ] Rip out LangGraph — replace 15-node graph with linear `pipeline(job)` function (~100 lines deleted, no behaviour loss). Deferred until it blocks progress.
-- [ ] Prompt caching — migrate `tailor_cv`, `evaluate_cv`, `classify_role_level` to Anthropic SDK with `cache_control: ephemeral` on the master_cv prefix (REDESIGN week-1 #5)
+- [ ] Prompt caching — migrate `tailor_cv`, `evaluate_cv`, `classify_role_level` to Anthropic SDK with `cache_control: ephemeral` on the master_cv prefix
 - [ ] Drop LaTeX — replace `pdflatex` with weasyprint (HTML/CSS → PDF) so the project doesn't need a system-wide TeX install
 
 ### Flywheel (the channel jobpilot can't optimize)

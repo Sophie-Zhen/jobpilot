@@ -64,7 +64,6 @@ Scheduled mode (cron): skips all review interrupts, saves scored jobs for later 
 | `src/jobpilot/job_sources.py` | Job search providers (jsearch, linkedin, active_jobs_db, arbeitnow, remotive), dedup filter (seen_jobs.json + applications.json), budget tracking |
 | `src/jobpilot/discovery/ats_sources.py` | Tier-1 discovery: poll target-company ATS endpoints for Dublin jobs |
 | `src/jobpilot/discovery/opencli_source.py` | Tier-2 discovery: LinkedIn/Indeed scraping via opencli |
-| `src/jobpilot/api.py` | FastAPI backend exposing pipeline data |
 | `src/jobpilot/notify.py` | Telegram notification helpers |
 | `src/jobpilot/inbox_sync.py` | Phase 4 + 4.5 + 4.6: multi-account Gmail → applications.json. OAuth per account, LLM classifier (rejection/interview/info_request/ack/other), fuzzy company match, Telegram push on status change. Phase 4.5 auto-bootstraps new rows from unmatched ack emails. Phase 4.6 adds `--non-interactive` mode: when an OAuth grant expires under launchd, push a Telegram re-auth alert and exit non-zero instead of opening a browser. Read-only on email side; never replies. |
 | `infra/launchd/inbox-sync.plist.example` | macOS launchd UserAgent template — runs `jobpilot inbox-sync --non-interactive` at 21:00 (9 PM) daily, with launchd's built-in coalesced catch-up when the Mac was asleep at fire time. Copy to `~/Library/LaunchAgents/` then `launchctl load`. Setup notes in the file header. |
