@@ -18,9 +18,13 @@ Streamlit UI, or the pipeline without pulling in heavy deps.
 from __future__ import annotations
 
 import csv
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
+
+# Same convention as discovery/ats_sources.py — the curated target list.
+_DEFAULT_TARGET_COMPANIES = "data/target_companies.json"
 
 
 @dataclass
@@ -123,6 +127,54 @@ def top_companies(connections: list[Connection], n: int = 10) -> list[tuple[str,
         display.setdefault(key, c.company)
     ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
     return [(display[k], v) for k, v in ranked[:n]]
+
+
+@dataclass
+class TargetCompany:
+    name: str
+    cluster: str = ""
+    status: str = "active"  # "active" | "cold"
+
+
+def load_target_companies(path: str | Path = _DEFAULT_TARGET_COMPANIES) -> list[TargetCompany]:
+    """Read company names from target_companies.json (active + cold lists).
+
+    Returns [] for a missing/malformed file rather than raising.
+    """
+    p = Path(path)
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    out: list[TargetCompany] = []
+    for status in ("active", "cold"):
+        for entry in data.get(status, []) or []:
+            if isinstance(entry, dict) and str(entry.get("name", "")).strip():
+                out.append(
+                    TargetCompany(
+                        name=str(entry["name"]).strip(),
+                        cluster=str(entry.get("cluster", "")),
+                        status=status,
+                    )
+                )
+    return out
+
+
+def cross_reference_targets(
+    targets: list[TargetCompany], connections: list[Connection]
+) -> list[tuple[TargetCompany, list[Connection]]]:
+    """Target companies where the candidate has ≥1 connection — a referral path.
+
+    Sorted active-before-cold, then most connections first. The highest-leverage
+    output of the module: which of MY target companies can I get a warm intro at.
+    """
+    matches = [
+        (t, refs) for t in targets if (refs := find_referrers(t.name, connections))
+    ]
+    matches.sort(key=lambda tr: (tr[0].status != "active", -len(tr[1]), tr[0].name))
+    return matches
 
 
 def referral_hint(company: str, connections: list[Connection], limit: int = 5) -> str:

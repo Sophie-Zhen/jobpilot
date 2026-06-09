@@ -4,10 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import json
+
 from jobpilot.referrals import (
     Connection,
+    TargetCompany,
+    cross_reference_targets,
     find_referrers,
     load_connections,
+    load_target_companies,
     referral_hint,
     top_companies,
 )
@@ -95,6 +100,58 @@ class TestTopCompanies:
         ]
         top = top_companies(conns, n=5)
         assert top[0] == ("Google", 3)
+
+
+class TestLoadTargetCompanies:
+    _SAMPLE = {
+        "active": [
+            {"name": "Stripe", "cluster": "fintech_banks", "tier": 1},
+            {"name": "Google Ireland", "cluster": "big_tech_dublin"},
+            {"name": "", "cluster": "junk"},  # dropped — no name
+        ],
+        "cold": [{"name": "Cohere", "cluster": "ai_pure_play", "reason_cold": "no Dublin"}],
+    }
+
+    def test_parses_active_and_cold(self, tmp_path):
+        p = tmp_path / "tc.json"
+        p.write_text(json.dumps(self._SAMPLE), encoding="utf-8")
+        targets = load_target_companies(p)
+        names = {t.name for t in targets}
+        assert names == {"Stripe", "Google Ireland", "Cohere"}
+        cohere = next(t for t in targets if t.name == "Cohere")
+        assert cohere.status == "cold"
+        assert cohere.cluster == "ai_pure_play"
+
+    def test_missing_file_returns_empty(self, tmp_path):
+        assert load_target_companies(tmp_path / "nope.json") == []
+
+    def test_malformed_returns_empty(self, tmp_path):
+        p = tmp_path / "bad.json"
+        p.write_text("not json{", encoding="utf-8")
+        assert load_target_companies(p) == []
+
+
+class TestCrossReferenceTargets:
+    def test_returns_only_targets_with_referrers_active_first(self):
+        targets = [
+            TargetCompany("Stripe", "fintech", "active"),
+            TargetCompany("Amazon", "big_tech", "active"),  # no connection → excluded
+            TargetCompany("Cohere", "ai", "cold"),
+        ]
+        conns = [
+            Connection("A", "A", "Stripe", "SWE"),
+            Connection("B", "B", "Stripe Payments", "EM"),
+            Connection("C", "C", "Cohere", "Researcher"),
+        ]
+        result = cross_reference_targets(targets, conns)
+        # Amazon excluded; Stripe (active, 2 refs) before Cohere (cold, 1 ref)
+        assert [t.name for t, _ in result] == ["Stripe", "Cohere"]
+        assert len(result[0][1]) == 2
+
+    def test_empty_when_no_overlap(self):
+        targets = [TargetCompany("Amazon")]
+        conns = [Connection("A", "A", "Stripe")]
+        assert cross_reference_targets(targets, conns) == []
 
 
 class TestReferralHint:

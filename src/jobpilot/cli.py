@@ -563,6 +563,27 @@ def referrals_cmd(args: argparse.Namespace) -> None:
         print("copy of your data → Connections) and save it there (or set CONNECTIONS_CSV).")
         return
 
+    if getattr(args, "targets", False):
+        from jobpilot.referrals import cross_reference_targets, load_target_companies
+
+        targets = load_target_companies()
+        if not targets:
+            print("No target_companies.json found (data/target_companies.json).")
+            return
+        matches = cross_reference_targets(targets, conns)
+        if not matches:
+            print(f"No warm connections among your {len(targets)} target companies yet.")
+            return
+        print(f"{len(matches)}/{len(targets)} target companies have a warm connection:\n")
+        for t, refs in matches:
+            tag = "" if t.status == "active" else " [cold]"
+            cluster = f"  [{t.cluster}]" if t.cluster else ""
+            who = "; ".join(
+                r.name + (f" — {r.position}" if r.position else "") for r in refs[:5]
+            )
+            print(f"  ✓ {t.name}{tag}{cluster}: {len(refs)} — {who}")
+        return
+
     company = " ".join(args.company).strip() if args.company else ""
     if company:
         refs = find_referrers(company, conns)
@@ -1252,6 +1273,11 @@ def main() -> None:
         "company",
         nargs="*",
         help="Company name to find referrers at; omit to list top companies by connection count",
+    )
+    referrals_parser.add_argument(
+        "--targets",
+        action="store_true",
+        help="Cross-reference connections against target_companies.json (warm referral paths)",
     )
     referrals_parser.set_defaults(func=referrals_cmd)
 
