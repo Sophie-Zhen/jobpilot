@@ -328,6 +328,21 @@ async def _restamp(query, marker: str, reply_markup) -> None:
 _TAILOR_INFLIGHT: set[str] = set()
 
 
+def _extract_eval_block(text: str) -> str:
+    """Pull the recruiter-scan verdict out of `jobpilot tailor` stdout.
+
+    Returns the lines between the EVALUATION markers (inclusive of content,
+    exclusive of the markers themselves), or "" if no block is present (e.g.
+    a --no-eval run or an eval failure).
+    """
+    start = "=== EVALUATION ==="
+    end = "=== END EVALUATION ==="
+    if start not in text or end not in text:
+        return ""
+    body = text.split(start, 1)[1].split(end, 1)[0].strip()
+    return body
+
+
 async def _run_tailor_and_send(
     update: Update, ctx: ContextTypes.DEFAULT_TYPE, job: dict[str, Any]
 ) -> None:
@@ -375,6 +390,12 @@ async def _run_tailor_and_send(
         if cl.exists():
             with cl.open("rb") as fh:
                 await ctx.bot.send_document(chat.id, document=fh, filename=cl.name)
+
+        # Relay the recruiter-scan verdict (pile / ATS gap / weak bullets) that
+        # `jobpilot tailor` prints between the EVALUATION markers, if present.
+        verdict = _extract_eval_block(text)
+        if verdict:
+            await chat.send_message(verdict)
     except Exception as exc:
         _LOG.warning("tailor/send failed for %s: %s", job_id, exc)
         await chat.send_message(f"⚠️ Tailor error: {exc}")

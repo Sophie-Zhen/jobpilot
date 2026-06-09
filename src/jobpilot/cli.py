@@ -1091,6 +1091,56 @@ def cleanup(args: argparse.Namespace) -> None:
         print("  Nothing to clean — no skipped/rejected jobs have output folders.")
 
 
+_EVAL_START = "=== EVALUATION ==="
+_EVAL_END = "=== END EVALUATION ==="
+
+
+def _format_tailor_eval(ats_result, evaluation: dict) -> str:
+    """Plain-text recruiter-scan verdict for a tailored CV, bracketed by markers.
+
+    The bot extracts the block between the markers to relay it to Telegram, so
+    keep the markers stable. Surfaces the book's high-signal feedback: the
+    Yes/Maybe/No first-scan pile, the ATS keyword gap, career trajectory, and
+    the specific weak bullets to rewrite (passive voice / no number / generic).
+    """
+    pile = str(evaluation.get("pile", "")).lower()
+    pile_icon = {"yes": "✅", "maybe": "🟡", "no": "❌"}.get(pile, "•")
+    score = evaluation.get("overall_score", "?")
+    shortlist = evaluation.get("would_shortlist")
+    shortlist_str = "would shortlist" if shortlist else "would NOT shortlist"
+
+    lines = [_EVAL_START, f"{pile_icon} Pile: {pile.upper() or '?'} ({score}/10) · {shortlist_str}"]
+
+    if ats_result is not None:
+        passed = "pass" if ats_result.threshold_passed else "below threshold"
+        line = f"ATS: {ats_result.overall:.2f} ({passed})"
+        missing = list(ats_result.coverage.missing_must)
+        if missing:
+            line += f" · missing must-haves: {', '.join(missing[:6])}"
+        lines.append(line)
+
+    traj = evaluation.get("trajectory") or {}
+    if isinstance(traj, dict) and traj.get("assessment"):
+        note = traj.get("note", "")
+        lines.append(f"Trajectory: {traj['assessment']}" + (f" — {note}" if note else ""))
+
+    weak = evaluation.get("weak_bullets") or []
+    if weak:
+        lines.append(f"Weak bullets ({len(weak)}):")
+        for w in weak[:5]:
+            if isinstance(w, dict):
+                lines.append(f"  • {w.get('issue', '?')}: {w.get('bullet', '')}")
+
+    suggestions = evaluation.get("suggestions") or []
+    if suggestions:
+        lines.append("Top fixes:")
+        for s in suggestions[:3]:
+            lines.append(f"  • {s}")
+
+    lines.append(_EVAL_END)
+    return "\n".join(lines)
+
+
 def tailor_one_job(args: argparse.Namespace) -> None:
     """Tailor CV + cover letter for a single job from pipeline_jobs.json.
 
@@ -1218,6 +1268,28 @@ def tailor_one_job(args: argparse.Namespace) -> None:
     else:
         print("  OK — meets target")
 
+    # Recruiter-scan evaluation: the same objective ATS check + 7-second-scan
+    # recruiter score the Streamlit loop runs, so the bot/CLI path surfaces the
+    # Yes/Maybe/No pile and weak-bullet feedback instead of stopping at a PDF.
+    if not args.no_eval:
+        from jobpilot.ats import ats_score
+        from jobpilot.llm import evaluate_cv
+
+        print("\nEvaluating (ATS + recruiter scan, ~30-60s) ...")
+        try:
+            ats_result = ats_score(cv_data=cv_data, jd_text=description, pdf_path=cv_path, use_llm=True)
+        except Exception as exc:
+            print(f"  ATS scoring failed: {exc}")
+            ats_result = None
+        try:
+            evaluation = evaluate_cv(cv_data, job, cover_letter_text)
+        except Exception as exc:
+            print(f"  Recruiter evaluation failed: {exc}")
+            evaluation = {}
+        if ats_result is not None or evaluation:
+            print()
+            print(_format_tailor_eval(ats_result, evaluation))
+
     print("\nReady to review:")
     print(f"  open {cv_path}")
     print(f"  open {cl_path}")
@@ -1259,6 +1331,10 @@ def main() -> None:
         choices=["grad", "tech_eng", "regtech"],
         default="tech_eng",
         help="CV framing variant (default: tech_eng)",
+    )
+    tailor_parser.add_argument(
+        "--no-eval", action="store_true",
+        help="Skip the post-render ATS + recruiter-scan evaluation (faster; PDFs only)",
     )
     tailor_parser.set_defaults(func=tailor_one_job)
 
