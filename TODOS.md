@@ -33,7 +33,7 @@ Daily routine operational end-to-end: `jobpilot discover` (T1 ATS + T2 opencli) 
 - [ ] Streamlit-lite: trim to 3 tabs (Master CV editor, Story Bank editor, Review Queue with P0/P1/P2 columns). Delete the auto-tailor / evaluate UI — those become CLI-only.
 
 ### Discovery layer follow-ups
-- [ ] Merge `~/code/dublin_ai_jobs_bot` into `src/jobpilot/discovery/` — port the IrishJobs.ie scraper for non-LinkedIn coverage. Currently a separate cron pipeline.
+- [ ] (low) Port `SmartRecruiters` ATS polling (and optionally Crawl4AI arbitrary-page scraping) from the archived `dublin_ai_jobs_bot` if more ATS coverage is wanted. NOTE: the long-claimed "IrishJobs.ie scraper" never existed in that repo — only Greenhouse/Lever/Ashby (already in `discovery/ats_sources.py`) + SmartRecruiters + Crawl4AI. Repo archived 2026-06-10 at `~/code/_archive/dublin_ai_jobs_bot-2026-06-10.tar.gz`.
 - [ ] Niche-gold P0 scoring: jobs at `target_companies.json` companies with `niche_gold: true` auto-promoted to P0 regardless of keyword overlap
 - [ ] (low) **Merge-time record collapse** — `job_sources.py:merge_jobs` still appends the same role from multiple sources as separate records (Docusign ML Engineer appeared 6×), so `pipeline_jobs.json` bloats. Cosmetic now that the digest dedups by normalized (company, title) at read-time (shipped 2026-06-09: exact-normalized key + skipped_ids filter + within-run collapse in `cli.py:digest`). Collapse at merge only if pipeline size becomes a problem.
 
