@@ -61,8 +61,11 @@
 
     <key>EnvironmentVariables</key>
     <dict>
+        <!-- /Library/TeX/texbin is required: the Tailor button spawns
+             `jobpilot tailor`, whose PDF render shells out to pdflatex.
+             launchd's minimal PATH omits it, so render fails without this. -->
         <key>PATH</key>
-        <string>/Users/sophie/.local/bin:/Users/sophie/miniconda3/envs/jobpilot/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>/Users/sophie/.local/bin:/Users/sophie/miniconda3/envs/jobpilot/bin:/Library/TeX/texbin:/usr/local/bin:/usr/bin:/bin</string>
         <key>HOME</key>
         <string>/Users/sophie</string>
     </dict>
