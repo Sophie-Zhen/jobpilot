@@ -666,6 +666,17 @@ def run_inbox_sync(
                 json.dumps(apps, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
+        # Reclaim disk: once an application is rejected/closed, its tailored
+        # CV/cover-letter PDFs are dead weight (job metadata is kept).
+        try:
+            from jobpilot.cleanup import DELETE_STATUSES, delete_output_for
+            for event in all_events:
+                if event.get("new_status") in DELETE_STATUSES:
+                    jid = event.get("app", {}).get("job_id")
+                    if jid:
+                        delete_output_for(jid)
+        except Exception:
+            pass
         # Record only successfully-classified messages as processed so a
         # transient classifier failure (missing CLI on PATH, rate limit, etc.)
         # can be retried on the next run rather than silently lost.

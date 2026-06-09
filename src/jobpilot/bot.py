@@ -434,6 +434,12 @@ async def handle_callback(
     if action == ACTION_DROP:
         status = _record_skipped(job)
         _remove_from_saved(job_id)
+        # Reclaim disk: a dropped job's tailored PDFs are dead weight.
+        try:
+            from jobpilot.cleanup import delete_output_for
+            delete_output_for(job_id)
+        except Exception as exc:
+            _LOG.warning("cleanup on drop failed for %s: %s", job_id, exc)
         await _restamp(query, _TERMINAL_LABELS[ACTION_DROP], None)
         await query.answer(f"🗑 Dropped{_note(status)}")
         return

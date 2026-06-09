@@ -946,6 +946,26 @@ def bot_run(_args: argparse.Namespace) -> None:
     run_bot()
 
 
+def cleanup(args: argparse.Namespace) -> None:
+    """Delete output folders for skipped / rejected jobs (keeps job metadata).
+
+    See ``jobpilot.cleanup`` for the keep/delete rules. Use ``--dry-run`` to
+    preview before deleting.
+    """
+    from jobpilot.cleanup import sweep
+
+    res = sweep(dry_run=args.dry_run)
+    mb = res["bytes_freed"] / 1_000_000
+    verb = "Would free" if args.dry_run else "Freed"
+    print(f"{verb} {mb:.1f} MB across {res['count']} output folder(s)"
+          + (" (dry-run)" if args.dry_run else ""))
+    for d in res["deleted"]:
+        prefix = "  would delete: " if args.dry_run else "  deleted: "
+        print(f"{prefix}{d['folder']}  ({d['bytes'] / 1024:.0f} KB)")
+    if not res["deleted"]:
+        print("  Nothing to clean — no skipped/rejected jobs have output folders.")
+
+
 def tailor_one_job(args: argparse.Namespace) -> None:
     """Tailor CV + cover letter for a single job from pipeline_jobs.json.
 
@@ -1301,6 +1321,18 @@ def main() -> None:
              "and exit non-zero instead. Use for launchd/cron runs.",
     )
     inbox_parser.set_defaults(func=inbox_sync)
+
+    # cleanup — delete output folders for skipped / rejected jobs (keeps metadata)
+    cleanup_parser = subparsers.add_parser(
+        "cleanup",
+        help="Delete CV/cover-letter output folders for skipped/rejected jobs "
+             "(job metadata is kept for stats)",
+    )
+    cleanup_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Show which folders would be deleted and the space freed, without deleting",
+    )
+    cleanup_parser.set_defaults(func=cleanup)
 
     args = parser.parse_args()
     if not args.command:
