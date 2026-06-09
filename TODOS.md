@@ -1,6 +1,6 @@
 # JobPilot — TODOs
 
-_Last updated: 2026-06-07_
+_Last updated: 2026-06-09_
 
 ## Current Focus
 Daily routine operational end-to-end: `jobpilot discover` (T1 ATS + T2 opencli) → `jobpilot digest` (Telegram cards with ⭐ Save / Skip buttons) → `jobpilot bot run` daemon records taps to saved.json/skipped.json → batch `jobpilot tailor` saved jobs → log to applications.json. 24 applications submitted to date (7 on 2026-06-04: Ipsus, Stripe, Anthropic, Hadfield Green, Apple, Klaviyo, Version 1). Pipeline pruned 2026-06-04 (475→415, removed 60 stale April legacy records). Next: monitor callback window; structural pipeline-hygiene fix (see new section) deferred until it bites.
@@ -35,8 +35,7 @@ Daily routine operational end-to-end: `jobpilot discover` (T1 ATS + T2 opencli) 
 ### Discovery layer follow-ups
 - [ ] Merge `~/code/dublin_ai_jobs_bot` into `src/jobpilot/discovery/` — port the IrishJobs.ie scraper for non-LinkedIn coverage. Currently a separate cron pipeline.
 - [ ] Niche-gold P0 scoring: jobs at `target_companies.json` companies with `niche_gold: true` auto-promoted to P0 regardless of keyword overlap
-- [ ] **Digest dedup must also filter `skipped_ids`** — the digest gate excludes applied + already-sent jobs but NOT skipped ones, so a Skipped role can reappear in a later digest. Add `skipped.json` job_ids to the exclusion set in `cli.py:digest`.
-- [ ] **Fuzzy (company, normalized_title) dedup on merge** — the same role from multiple sources lands as separate records (Docusign ML Engineer appeared 6×). Collapse by normalized (company, title) in `job_sources.py:merge_jobs`, which currently dedups on exact `id` only.
+- [ ] (low) **Merge-time record collapse** — `job_sources.py:merge_jobs` still appends the same role from multiple sources as separate records (Docusign ML Engineer appeared 6×), so `pipeline_jobs.json` bloats. Cosmetic now that the digest dedups by normalized (company, title) at read-time (shipped 2026-06-09: exact-normalized key + skipped_ids filter + within-run collapse in `cli.py:digest`). Collapse at merge only if pipeline size becomes a problem.
 
 ### Validate the ATS loop end-to-end
 - [ ] Run auto-tailor loop live on one real job and verify iteration 2+ targets ATS gaps; screenshot the ATS card for confirmation

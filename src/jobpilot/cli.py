@@ -854,11 +854,16 @@ def _job_folder(job: dict) -> str:
     return "_".join(parts) if parts else job_id
 
 
-def _format_job_digest(job: dict) -> str:
+def _format_job_digest(job: dict, connections: list | None = None) -> str:
     """Format one job as a Telegram-friendly plain-text card.
 
     Plain text (no markdown) — Telegram auto-linkifies the URL and we
     avoid escape collisions on URLs containing underscores.
+
+    If ``connections`` (a parsed LinkedIn Connections list) is passed and the
+    candidate knows someone at the company, the card leads with a referral
+    call-to-action — a warm path is the ~10x lever (Orosz ch.2) and the advice
+    is to ask BEFORE applying, so it goes right under the title.
     """
     company = job.get("company", "?")
     title = job.get("title", "?")
@@ -873,6 +878,19 @@ def _format_job_digest(job: dict) -> str:
     header_prefix = "[NEW] " if age == 0 else ""
 
     lines = [f"{header_prefix}[{company}] {title}"]
+    if connections:
+        from jobpilot.referrals import find_referrers
+
+        refs = find_referrers(company, connections)
+        if refs:
+            shown = ", ".join(
+                r.name + (f" ({r.position})" if r.position else "") for r in refs[:3]
+            )
+            more = f" +{len(refs) - 3} more" if len(refs) > 3 else ""
+            lines.append(
+                f"🤝 {len(refs)} connection(s) here: {shown}{more} "
+                f"— ask for a referral BEFORE applying"
+            )
     meta_parts = [p for p in [location, f"Posted {age_str}"] if p]
     lines.append(" · ".join(meta_parts))
     if skills:
@@ -886,13 +904,28 @@ def _format_job_digest(job: dict) -> str:
     return "\n".join(lines)
 
 
+def _norm_key(company: str, title: str) -> tuple[str, str]:
+    """Normalized (company, title) key for cross-posting dedup.
+
+    Lowercases and reduces non-alphanumerics to single spaces so the same role
+    re-posted under a new id (or from another source) collapses to one key —
+    e.g. EY "Agentic AI Engineer - Senior Consultant" at two posting ids.
+    """
+    def norm(s: str) -> str:
+        return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", (s or "").lower())).strip()
+    return norm(company), norm(title)
+
+
 def digest(args: argparse.Namespace) -> None:
     """Push today's top eng-flavored, un-digested, un-applied jobs to Telegram.
 
     Filters pipeline_jobs.json by:
       - eng-flavored title (same regex as discover)
       - job_id not in applications.json (skip already-applied)
+      - job_id not in skipped.json (skip already-dropped)
       - job_id not in data/digested.json (skip already-sent today/earlier)
+      - normalized (company, title) not already applied/rejected/skipped, and
+        deduped within the run (same role re-posted under a new id)
 
     Sends one Telegram message per job (one card per job sets up Phase 2
     inline buttons). Tracks sent ids in data/digested.json. Use --reset
@@ -907,14 +940,27 @@ def digest(args: argparse.Namespace) -> None:
         return
     jobs = json.loads(pipeline_path.read_text(encoding="utf-8"))
 
-    apps_path = Path("data/applications.json")
+    # Cross-pile dedup: exclude a job if its id OR its normalized
+    # (company, title) already appears in applications (any status, incl.
+    # rejection) or skipped.json — catches the same role re-posted under a new
+    # id. ``seen_keys`` holds the normalized keys; ``applied_ids``/``skipped_ids``
+    # the exact ids.
     applied_ids: set[str] = set()
-    if apps_path.exists():
+    skipped_ids: set[str] = set()
+    seen_keys: set[tuple[str, str]] = set()
+    for path, id_set in ((Path("data/applications.json"), None),
+                         (Path("data/skipped.json"), None)):
+        if not path.exists():
+            continue
         try:
-            apps = json.loads(apps_path.read_text(encoding="utf-8"))
-            applied_ids = {a.get("job_id") for a in apps if a.get("job_id")}
+            rows = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            continue
+        for r in rows:
+            jid = r.get("job_id")
+            if jid:
+                (applied_ids if path.name == "applications.json" else skipped_ids).add(jid)
+            seen_keys.add(_norm_key(r.get("company", ""), r.get("title", "")))
 
     digested_path = Path("data/digested.json")
     if args.reset:
@@ -930,12 +976,16 @@ def digest(args: argparse.Namespace) -> None:
     eligible: list[tuple[int, dict]] = []
     skipped_no_date = 0
     skipped_too_old = 0
+    skipped_dup = 0
     for j in jobs:
         if not j.get("id"):
             continue
-        if j["id"] in applied_ids or j["id"] in sent_ids:
+        if j["id"] in applied_ids or j["id"] in sent_ids or j["id"] in skipped_ids:
             continue
         if not _is_eng_flavored(j.get("title", "")):
+            continue
+        if _norm_key(j.get("company", ""), j.get("title", "")) in seen_keys:
+            skipped_dup += 1  # same role already applied/rejected/skipped
             continue
         age = _job_age_days(j)
         if age is None:
@@ -946,12 +996,31 @@ def digest(args: argparse.Namespace) -> None:
             continue
         eligible.append((age, j))
 
-    # Newest first (smallest age first). Tiebreak by reverse pipeline order
-    # to keep determinism (most recently appended wins).
-    eligible.sort(key=lambda t: t[0])
-    picks = [j for _, j in eligible[: args.limit]]
+    # Referable jobs first (a warm path is the ~10x lever — ask before applying),
+    # then newest within each group (smallest age first) for determinism.
+    from jobpilot.config import load_settings
+    from jobpilot.referrals import find_referrers, load_connections
+
+    connections = load_connections(load_settings().connections_csv)
+
+    def _has_referrer(job: dict) -> bool:
+        return bool(connections and find_referrers(job.get("company", ""), connections))
+
+    eligible.sort(key=lambda t: (not _has_referrer(t[1]), t[0]))
+    # Collapse same-role-different-id within this run, keeping the freshest.
+    run_seen: set[tuple[str, str]] = set()
+    deduped: list[dict] = []
+    for _, j in eligible:
+        key = _norm_key(j.get("company", ""), j.get("title", ""))
+        if key in run_seen:
+            skipped_dup += 1
+            continue
+        run_seen.add(key)
+        deduped.append(j)
+    picks = deduped[: args.limit]
     print(f"Filter: age≤{max_age}d  "
-          f"(skipped {skipped_no_date} undateable, {skipped_too_old} too old)")
+          f"(skipped {skipped_no_date} undateable, {skipped_too_old} too old, "
+          f"{skipped_dup} dup-of-seen)")
 
     if not picks:
         print("Nothing to digest: 0 eligible jobs after filters.")
@@ -965,7 +1034,7 @@ def digest(args: argparse.Namespace) -> None:
     if args.dry_run:
         for i, job in enumerate(picks, 1):
             print(f"--- card {i}/{len(picks)} ---")
-            print(_format_job_digest(job))
+            print(_format_job_digest(job, connections))
             print()
         print("--dry-run: nothing sent to Telegram.")
         return
@@ -973,7 +1042,7 @@ def digest(args: argparse.Namespace) -> None:
     sent_now = 0
     failed = 0
     for job in picks:
-        message = _format_job_digest(job)
+        message = _format_job_digest(job, connections)
         # parse_mode=None: digest cards embed raw JD descriptions which
         # may contain unbalanced markdown delimiters or HTML entities (e.g.
         # &lt;/&quot;/`*`/`_`) that trigger Telegram 400 "can't parse
