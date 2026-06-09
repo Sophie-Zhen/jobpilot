@@ -214,6 +214,39 @@ def _load_master_cv() -> dict[str, Any]:
     return json.loads(master_path.read_text(encoding="utf-8"))
 
 
+def _master_skill_lookup(master: dict[str, Any]) -> dict[str, str]:
+    """Map lowercased master skill → its canonical display form.
+
+    Used to gate per-role Technologies lines: only skills the candidate actually
+    lists in master_cv may appear, echoing master_cv's own casing.
+    """
+    lookup: dict[str, str] = {}
+    for items in master.get("skills", {}).values():
+        for skill in items or []:
+            lookup.setdefault(skill.lower(), skill)
+    return lookup
+
+
+def _validate_techs(requested: Any, valid_skills: dict[str, str]) -> list[str]:
+    """Keep only requested techs present in master skills (dedup, preserve order).
+
+    The truthfulness gate behind the per-role Technologies line: a tailored CV can
+    only surface technologies the candidate genuinely lists in master_cv.
+    """
+    if not isinstance(requested, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for tech in requested:
+        if not isinstance(tech, str):
+            continue
+        key = tech.strip().lower()
+        if key in valid_skills and key not in seen:
+            out.append(valid_skills[key])
+            seen.add(key)
+    return out
+
+
 def _apply_adjustments(
     master: dict[str, Any],
     adjustments: dict[str, Any],
@@ -242,24 +275,38 @@ def _apply_adjustments(
         education.append(edu)
     result["education"] = education
 
-    # Experience — select bullets
+    # Experience — select bullets + optional per-role Technologies line.
     bullet_indices = _get("experience_bullet_indices", {})
+    tech_lines = adjustments.get("experience_tech_lines") or {}
+    valid_skills = _master_skill_lookup(master)
     experience = []
     for exp in master["experience"]:
         exp_copy = copy.deepcopy(exp)
         indices = bullet_indices.get(exp["id"])
+        cur_exp = None
+        if current_cv:
+            cur_exp = next(
+                (c for c in current_cv.get("experience", []) if c.get("id") == exp["id"]),
+                None,
+            )
+
         if indices is not None:
             exp_copy["bullets"] = [exp["bullets"][i] for i in indices if i < len(exp["bullets"])]
-        elif current_cv:
-            # Keep current selection if no new indices provided
-            for cur_exp in current_cv.get("experience", []):
-                if cur_exp.get("id") == exp["id"]:
-                    exp_copy["bullets"] = cur_exp["bullets"]
-                    break
-            else:
-                exp_copy["bullets"] = exp["bullets"][:3]
+        elif cur_exp is not None:
+            # Keep current selection if no new indices provided.
+            exp_copy["bullets"] = cur_exp["bullets"]
         else:
             exp_copy["bullets"] = exp["bullets"][:3]
+
+        # Technologies line: validate requested techs against master skills, else
+        # preserve the current selection. Empty list → template renders no line.
+        requested = tech_lines.get(exp["id"])
+        if requested is not None:
+            exp_copy["tech"] = _validate_techs(requested, valid_skills)
+        elif cur_exp is not None and cur_exp.get("tech"):
+            exp_copy["tech"] = cur_exp["tech"]
+        else:
+            exp_copy["tech"] = []
         experience.append(exp_copy)
     result["experience"] = experience
 
@@ -285,6 +332,11 @@ def _apply_adjustments(
         result["awards"] = master["awards"]
     else:
         result["awards"] = []
+
+    # Section order is set by tailor_cv per variant; preserve it across the
+    # auto-tailor loop, which rebuilds the CV from master each iteration.
+    if current_cv and current_cv.get("section_order"):
+        result["section_order"] = current_cv["section_order"]
 
     return result
 
@@ -398,6 +450,11 @@ def tailor_cv(
         "- experience_bullet_indices: for each experience ID, an array of bullet indices (0-based) "
         "to INCLUDE. Follow role-level guidance for how many per role. "
         "Format: {\"huawei\": [0, 1], \"walkers\": [0, 2, 3], \"tax_bureau\": [0, 2, 3]}\n"
+        "- experience_tech_lines: for each experience ID, an array of 3-6 technologies "
+        "DRAWN FROM THE SKILLS LISTED ABOVE that the candidate actually used in THAT role, "
+        "rendered as a 'Technologies:' line under the bullets to reinforce hands-on recency. "
+        "Only include technologies genuinely used there; omit a role or use [] if unsure. "
+        "Format: {\"huawei\": [\"Python\", \"PyTorch\"], \"walkers\": [\"Python\", \"Prolog\"]}\n"
         "- project_ids: array of project IDs to include. Follow role-level guidance for count. "
         f"Choose from: {[p['id'] for p in master['projects']]}\n"
         "- skills: object with categories, each containing skills ordered by relevance to THIS job. "
@@ -413,7 +470,11 @@ def tailor_cv(
     except Exception as exc:
         raise RuntimeError(f"CV tailoring failed: {exc}") from exc
 
-    return _apply_adjustments(master, adjustments)
+    result = _apply_adjustments(master, adjustments)
+    result["section_order"] = list(
+        SECTION_ORDER_BY_VARIANT.get(variant, SECTION_ORDER_BY_VARIANT["tech_eng"])
+    )
+    return result
 
 
 def revise_cv(
@@ -723,6 +784,16 @@ TARGET_PAGES_BY_VARIANT: dict[str, int] = {
     "regtech": 2,
 }
 
+# Section emission order per variant. Keys must match the dispatch labels in
+# templates/cv.tex. The book's guidance: keep Languages/Technologies high on the
+# page; for career-changer / new-grad framing (grad), put Projects above
+# Experience because the projects ARE the engineering evidence.
+SECTION_ORDER_BY_VARIANT: dict[str, list[str]] = {
+    "grad": ["summary", "skills", "projects", "experience", "education", "awards"],
+    "tech_eng": ["summary", "experience", "skills", "projects", "education", "awards"],
+    "regtech": ["summary", "experience", "skills", "projects", "education", "awards"],
+}
+
 VALID_VARIANTS = tuple(FRAMING_RULES_BY_VARIANT.keys())
 
 ROLE_LEVEL_INSTRUCTIONS: dict[str, str] = {
@@ -804,7 +875,9 @@ def evaluate_cv(
     cv_text = "\n".join(cv_parts)
 
     prompt = (
-        "You are an experienced technical recruiter and ATS reviewer.\n"
+        "You are an experienced technical recruiter screening this CV the way it is "
+        "really screened: a 7-second first scan (location/visa, years of experience, "
+        "key technologies, titles & companies), THEN a closer read only if it survives.\n"
         "Evaluate this CV and cover letter against the job description.\n"
         "Be critical but fair. The candidate is a career changer (tax/government -> AI/ML).\n\n"
         f"JOB DESCRIPTION:\n{job_description[:2000]}\n\n"
@@ -812,8 +885,18 @@ def evaluate_cv(
         f"COVER LETTER:\n{cover_letter[:1500]}\n\n"
         "Return a JSON object with:\n"
         "- overall_score: 1-10\n"
+        "- pile: 'yes' | 'maybe' | 'no' — the recruiter's first-scan triage. "
+        "'yes' = jumps out as a strong fit, would interview; 'maybe' = close but not "
+        "clearly a fit; 'no' = not a fit on the quick scan. Be strict — most CVs are 'maybe'.\n"
         "- keyword_coverage: {matched: [...], missing_critical: [...], missing_nice_to_have: [...]}\n"
         "- experience_fit: 1-10 with one-sentence explanation\n"
+        "- trajectory: {assessment: 'progression' | 'flat', note: '...'} — does the career "
+        "story show growth (promotions, increasing scope/responsibility) or read flat/journeyman? "
+        "For this career-changer, judge growth WITHIN the AI/ML transition; don't penalize the pivot.\n"
+        "- weak_bullets: list of objects {bullet: '<text>', issue: 'passive_voice' | 'no_number' "
+        "| 'generic'} — bullets using passive/weak verbs ('was responsible for'), lacking any "
+        "quantification, or leaning on empty phrases ('team player', 'detail-oriented'). "
+        "List at most the 5 worst; use [] if none.\n"
         "- red_flags: list of strings a recruiter would question\n"
         "- ats_issues: list of formatting/keyword issues\n"
         "- strengths: list of what works well\n"

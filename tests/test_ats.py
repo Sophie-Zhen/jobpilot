@@ -267,3 +267,50 @@ class TestATSScore:
             assert score.threshold_passed is True
         finally:
             cache.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Keyword stuffing penalty — recruiters screen tech resumes by hand.
+# ---------------------------------------------------------------------------
+class TestStuffingPenalty:
+    def test_normal_cv_no_penalty(self):
+        from jobpilot.ats import JDRequirements, keyword_stuffing_penalty
+        reqs = JDRequirements(must_have=["Python", "Kubernetes"], nice_to_have=["Docker"])
+        text = "Built a Python service on Kubernetes. Used Docker for local dev."
+        assert keyword_stuffing_penalty(text, reqs) == 0.0
+
+    def test_stuffed_keyword_penalized(self):
+        from jobpilot.ats import JDRequirements, keyword_stuffing_penalty
+        reqs = JDRequirements(must_have=["Python"], nice_to_have=[])
+        # Adjacent repeats must all count (zero-width boundaries).
+        assert keyword_stuffing_penalty("Python " * 8, reqs) > 0.0
+
+    def test_penalty_is_capped(self):
+        from jobpilot.ats import (
+            _STUFFING_MAX_PENALTY,
+            JDRequirements,
+            keyword_stuffing_penalty,
+        )
+        reqs = JDRequirements(must_have=["Python", "Java", "Go", "Rust", "SQL"], nice_to_have=[])
+        text = " ".join(kw + " " * 0 + (" " + kw) * 7 for kw in ["Python", "Java", "Go", "Rust", "SQL"])
+        assert keyword_stuffing_penalty(text, reqs) == _STUFFING_MAX_PENALTY
+
+    def test_ats_score_subtracts_stuffing(self):
+        jd_text = "Python " * 20
+        cache = ats._cache_path(jd_text)
+        cache.write_text(
+            json.dumps({"must_have": ["Python"], "nice_to_have": [], "source": "test"}),
+            encoding="utf-8",
+        )
+        try:
+            stuffed = {
+                "summary": "",
+                "experience": [{"title": "E", "company": "C", "bullets": ["Python " * 8]}],
+                "skills": {"Languages": ["Python"]},
+            }
+            score = ats_score(cv_data=stuffed, jd_text=jd_text, use_llm=False)
+            # Coverage alone would be 1.0; stuffing knocks it down.
+            assert score.coverage.score == 1.0
+            assert score.overall < 1.0
+        finally:
+            cache.unlink(missing_ok=True)

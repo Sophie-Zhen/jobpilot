@@ -1,14 +1,24 @@
-"""ATS simulator: objective signal on whether a tailored CV will pass an
-applicant tracking system filter.
+"""Resume relevance + parseability check (formerly framed as an "ATS simulator").
 
-Converts vibes-based "will this pass?" into three measurable components:
+Reality check (Orosz, *The Pragmatic Engineer Tech Resume*, ch. 2 & 8): for tech
+roles, ATSes do NOT auto-reject resumes — filtering is done by a human in a 7-second
+scan, and "ATS optimization" is largely a myth sold by resume services. So this
+module is NOT about beating a bot. It measures whether a CV will read as *relevant*
+to that human scanner, and guards against the one thing recruiters genuinely
+penalize: keyword stuffing.
 
-1. Keyword coverage — how much of the JD's required vocabulary appears in the
-   CV text, weighted must_have vs nice_to_have.
-2. PDF parseability — can pypdf (the library ATS vendors actually use under
-   the hood) recover structured fields from a rendered CV?
-3. Format audit — does the PDF contain known ATS killers (multi-column,
-   tables, text-in-images, etc.)?
+Four measurable components:
+
+1. Keyword coverage — how much of the JD's vocabulary appears in the CV text,
+   weighted must_have vs nice_to_have. A relevance proxy, not a pass/fail gate.
+2. Stuffing penalty — over-repeating a JD keyword to inflate coverage reads as
+   spam to a human screener, so it subtracts from the score.
+3. PDF parseability — can pypdf recover structured fields from a rendered CV?
+   (Some pipelines do parse PDFs; clean extraction is still worth ensuring.)
+4. Format audit — multi-column / tables / text-in-images scramble extraction.
+
+Aim for the target band, not a perfect score: once coverage is solid (~0.75+),
+pushing higher usually means stuffing, which hurts more than it helps.
 
 The module is intentionally standalone — no LangGraph, no Jinja, no Streamlit.
 It can be invoked inside the auto-tailor loop (cv_data dict in hand, no PDF
@@ -334,7 +344,8 @@ def keyword_coverage(
         score = (2 * must_matched_ratio + nice_matched_ratio) / 3
 
     If there are no must-haves, score = nice_matched_ratio.
-    Must-haves are weighted 2x because they're the gate an ATS enforces.
+    Must-haves are weighted 2x because they're what a human screener checks for
+    first in the 7-second scan.
     """
     # Normalize text line-by-line so tokens are lowercased + punctuation stripped,
     # but multi-word phrases are preserved for matching.
@@ -365,6 +376,41 @@ def keyword_coverage(
         matched_nice=matched_nice,
         missing_nice=missing_nice,
     )
+
+
+# ---------------------------------------------------------------------------
+# Keyword stuffing penalty — the one thing human recruiters genuinely penalize.
+# ---------------------------------------------------------------------------
+# Above this many occurrences of a single JD keyword, a CV reads as stuffing.
+_STUFFING_REPEAT_LIMIT = 5
+_STUFFING_MAX_PENALTY = 0.10
+
+
+def keyword_stuffing_penalty(cv_text: str, requirements: JDRequirements) -> float:
+    """Penalty in [0, _STUFFING_MAX_PENALTY] for over-repeating JD keywords.
+
+    Tech resumes are screened by humans, not auto-rejected by bots, and recruiters
+    are sensitive to keyword stuffing. Subtracting this from the score discourages
+    the auto-tailor loop from cramming the same term to inflate coverage — pushing
+    it toward the "good enough" band instead of chasing a perfect number.
+    """
+    cv_norm = cv_text.lower()
+    cv_norm = re.sub(r"[^\w\s./+#-]", " ", cv_norm)
+    cv_norm = re.sub(r"\s+", " ", cv_norm).strip()
+
+    over = 0
+    for kw in list(requirements.must_have) + list(requirements.nice_to_have):
+        count = 0
+        for form in _expand_to_aliases(kw):
+            if not form:
+                continue
+            # Zero-width boundaries so adjacent repeats ("python python") all count —
+            # consuming boundaries would under-count exactly the stuffing we target.
+            pattern = r"(?<![a-z0-9])" + re.escape(form) + r"(?![a-z0-9])"
+            count += len(re.findall(pattern, cv_norm))
+        if count > _STUFFING_REPEAT_LIMIT:
+            over += 1
+    return min(_STUFFING_MAX_PENALTY, 0.05 * over)
 
 
 # ---------------------------------------------------------------------------
@@ -561,6 +607,8 @@ def ats_score(
         overall = min(overall, 0.5)
     critical_count = sum(1 for i in issues if i.severity == "critical")
     overall = max(0.0, overall - 0.1 * critical_count)
+    # Recruiters screen tech resumes by hand and penalize keyword stuffing.
+    overall = max(0.0, overall - keyword_stuffing_penalty(cv_text, requirements))
 
     return ATSScore(
         overall=round(overall, 3),

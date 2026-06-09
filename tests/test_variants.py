@@ -213,3 +213,141 @@ class TestPageCountCheck:
         assert result["meets_target"] is False
         assert result["warning"] is not None
         assert "adding more content" in result["warning"].lower()
+
+
+def _minimal_master() -> dict:
+    """Self-contained master_cv shape for _apply_adjustments unit tests."""
+    return {
+        "contact": {
+            "name": "T", "email": "t@e.com", "phone": "+1", "location": "Dublin",
+            "linkedin": "", "github": "", "visa": "",
+        },
+        "education": [
+            {"degree": "MSc", "institution": "DCU", "dates": "2025", "location": "D", "details": []}
+        ],
+        "experience": [
+            {"id": "e1", "title": "Eng", "company": "Co", "dates": "2024",
+             "location": "D", "bullets": ["a", "b", "c", "d"]},
+        ],
+        "projects": [{"id": "p1", "title": "Proj", "tech": "X", "dates": "2026", "bullets": ["y"]}],
+        "skills": {
+            "languages": ["Python", "SQL"], "ml_ai": ["PyTorch"],
+            "tools": ["Docker"], "other": [],
+        },
+        "awards": ["Award"],
+    }
+
+
+class TestSectionOrderByVariant:
+    def test_keys_match_variants(self):
+        from jobpilot.llm import SECTION_ORDER_BY_VARIANT
+        assert set(SECTION_ORDER_BY_VARIANT) == set(VALID_VARIANTS)
+
+    def test_each_order_covers_all_sections(self):
+        from jobpilot.llm import SECTION_ORDER_BY_VARIANT
+        canonical = {"summary", "experience", "education", "projects", "skills", "awards"}
+        for order in SECTION_ORDER_BY_VARIANT.values():
+            assert set(order) == canonical, f"{order} is not a full permutation"
+
+    def test_grad_puts_projects_and_skills_above_experience(self):
+        from jobpilot.llm import SECTION_ORDER_BY_VARIANT
+        order = SECTION_ORDER_BY_VARIANT["grad"]
+        assert order.index("projects") < order.index("experience")
+        assert order.index("skills") < order.index("experience")
+
+    def test_tech_eng_keeps_experience_first(self):
+        from jobpilot.llm import SECTION_ORDER_BY_VARIANT
+        order = SECTION_ORDER_BY_VARIANT["tech_eng"]
+        assert order.index("experience") < order.index("projects")
+        # Skills stays high (above education) per the book.
+        assert order.index("skills") < order.index("education")
+
+    def test_tailor_cv_attaches_variant_section_order(self):
+        from jobpilot.llm import SECTION_ORDER_BY_VARIANT, tailor_cv
+
+        stub = json.dumps({
+            "summary": "x", "include_fudan": False,
+            "experience_bullet_indices": {}, "project_ids": [],
+            "skills": {}, "include_awards": False,
+        })
+        with patch("jobpilot.llm._call_claude", return_value=stub):
+            cv = tailor_cv(
+                job={"title": "x", "company": "y", "description": "z"},
+                stories=[], profile={}, variant="grad",
+            )
+        assert cv["section_order"] == SECTION_ORDER_BY_VARIANT["grad"]
+
+
+class TestPerRoleTechLine:
+    def test_validate_techs_filters_to_master_skills(self):
+        from jobpilot.llm import _validate_techs
+        valid = {"python": "Python", "aws": "AWS"}
+        assert _validate_techs(["python", "AWS", "Rust"], valid) == ["Python", "AWS"]
+
+    def test_validate_techs_dedups_preserving_order_and_casing(self):
+        from jobpilot.llm import _validate_techs
+        valid = {"python": "Python", "sql": "SQL"}
+        assert _validate_techs(["SQL", "python", "sql"], valid) == ["SQL", "Python"]
+
+    def test_validate_techs_handles_non_list(self):
+        from jobpilot.llm import _validate_techs
+        assert _validate_techs(None, {"python": "Python"}) == []
+
+    def test_master_skill_lookup_flattens_all_categories(self):
+        from jobpilot.llm import _master_skill_lookup
+        lookup = _master_skill_lookup(_minimal_master())
+        assert lookup["python"] == "Python"
+        assert lookup["docker"] == "Docker"
+        assert lookup["pytorch"] == "PyTorch"
+
+    def test_apply_adjustments_attaches_validated_tech_dropping_fabrication(self):
+        from jobpilot.llm import _apply_adjustments
+        master = _minimal_master()
+        result = _apply_adjustments(
+            master, {"experience_tech_lines": {"e1": ["Python", "Bogus"]}}
+        )
+        e1 = next(e for e in result["experience"] if e["id"] == "e1")
+        assert e1["tech"] == ["Python"]  # "Bogus" is not in master skills → dropped
+
+    def test_apply_adjustments_defaults_tech_to_empty_list(self):
+        from jobpilot.llm import _apply_adjustments
+        result = _apply_adjustments(_minimal_master(), {})
+        e1 = next(e for e in result["experience"] if e["id"] == "e1")
+        assert e1["tech"] == []
+
+
+class TestSectionOrderPreservation:
+    def test_apply_adjustments_preserves_section_order_from_current_cv(self):
+        from jobpilot.llm import _apply_adjustments
+        current = {"section_order": ["skills", "summary"], "experience": []}
+        result = _apply_adjustments(_minimal_master(), {}, current_cv=current)
+        assert result["section_order"] == ["skills", "summary"]
+
+    def test_apply_adjustments_omits_section_order_without_current_cv(self):
+        from jobpilot.llm import _apply_adjustments
+        result = _apply_adjustments(_minimal_master(), {})
+        assert "section_order" not in result
+
+
+class TestEvaluateCVRecruiterChecks:
+    def test_prompt_requests_pile_trajectory_weak_bullets(self):
+        from jobpilot.llm import evaluate_cv
+
+        captured: dict[str, str] = {}
+
+        def capture(prompt: str, timeout: int = 600, tools: list | None = None) -> str:  # noqa: ARG001
+            captured["prompt"] = prompt
+            return json.dumps({
+                "overall_score": 5, "pile": "maybe",
+                "weak_bullets": [], "trajectory": {"assessment": "progression", "note": ""},
+            })
+
+        with patch("jobpilot.llm._call_claude", side_effect=capture):
+            evaluate_cv(
+                {"summary": "x", "experience": [], "skills": {}},
+                {"description": "a job"}, "cover letter",
+            )
+
+        assert "pile" in captured["prompt"]
+        assert "trajectory" in captured["prompt"]
+        assert "weak_bullets" in captured["prompt"]

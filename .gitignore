@@ -39,6 +39,8 @@ data/master_cover_letter.json
 data/stories.json
 data/target_companies.json
 data/profile.json
+# LinkedIn Connections.csv export (referral discovery) — PII: names of contacts.
+data/connections.csv
 # Generated PDF artifacts
 templates/cv.pdf
 templates/cover_letter.pdf
