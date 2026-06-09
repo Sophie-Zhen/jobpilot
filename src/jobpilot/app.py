@@ -708,6 +708,23 @@ with tab_pipeline:
                             exp_score = exp_fit
                         st.markdown(f'<div class="metric-card"><div class="value">{exp_score}</div><div class="label">Experience Fit</div></div>', unsafe_allow_html=True)
 
+                    # Recruiter first-scan triage + career trajectory (book: ch.1 Yes/Maybe/No)
+                    pile = evaluation.get("pile")
+                    trajectory = evaluation.get("trajectory") or {}
+                    badges = []
+                    if pile:
+                        pile_color = {"yes": "#16a34a", "maybe": "#ca8a04", "no": "#dc2626"}.get(str(pile).lower(), "#6b7280")
+                        badges.append(f'<span style="color:{pile_color};font-weight:600">Pile: {str(pile).upper()}</span>')
+                    if isinstance(trajectory, dict) and trajectory.get("assessment"):
+                        traj_color = "#16a34a" if trajectory["assessment"] == "progression" else "#ca8a04"
+                        note = trajectory.get("note", "")
+                        badges.append(
+                            f'<span style="color:{traj_color};font-weight:600">Trajectory: {trajectory["assessment"]}</span>'
+                            + (f' — {note}' if note else "")
+                        )
+                    if badges:
+                        st.markdown(" &nbsp;|&nbsp; ".join(badges), unsafe_allow_html=True)
+
                     if iterations:
                         def _fmt_iter(it: dict) -> str:
                             # New shape: {"iter", "ats_score", "llm_score", "shortlist"}
@@ -762,6 +779,22 @@ with tab_pipeline:
                         with st.expander("Suggestions", expanded=False):
                             for s in evaluation["suggestions"]:
                                 st.markdown(f"- {s}")
+
+                    # Weak bullets — passive voice / missing numbers / generic phrasing
+                    weak_bullets = evaluation.get("weak_bullets") or []
+                    if weak_bullets:
+                        _issue_label = {
+                            "passive_voice": "passive/weak verb",
+                            "no_number": "no number",
+                            "generic": "generic phrase",
+                        }
+                        with st.expander(f"Weak Bullets ({len(weak_bullets)})", expanded=False):
+                            for wb in weak_bullets:
+                                if isinstance(wb, dict):
+                                    label = _issue_label.get(wb.get("issue", ""), wb.get("issue", ""))
+                                    st.markdown(f"- _{label}_ — {wb.get('bullet', '')}")
+                                else:
+                                    st.markdown(f"- {wb}")
 
                     # Gaps analysis
                     gaps = evaluation.get("gaps", {}) or {}

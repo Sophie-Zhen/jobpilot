@@ -11,6 +11,11 @@ import jinja2
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
 
+# Order sections are emitted in when cv_data carries no explicit section_order.
+# Follows the book's general guidance: Languages/Technologies high on the page,
+# Education lower. Per-variant overrides live in llm.SECTION_ORDER_BY_VARIANT.
+DEFAULT_SECTION_ORDER = ["summary", "experience", "skills", "projects", "education", "awards"]
+
 _LATEX_ENV = jinja2.Environment(
     block_start_string=r"\BLOCK{",
     block_end_string="}",
@@ -111,6 +116,9 @@ def render_cv(data: dict[str, Any], output_path: Path) -> Path:
     escaped["raw_email"] = data.get("email", "")
     escaped["raw_linkedin"] = data.get("linkedin", "")
     escaped["raw_github"] = data.get("github", "")
+    # Fall back to the default layout when the caller didn't specify one.
+    if not escaped.get("section_order"):
+        escaped["section_order"] = list(DEFAULT_SECTION_ORDER)
     template = _LATEX_ENV.get_template("cv.tex")
     tex_content = template.render(**escaped)
     return _compile_latex(tex_content, output_path)

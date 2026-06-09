@@ -27,13 +27,17 @@
 
 \vspace{2pt}
 
-% Professional Summary
+% Sections are emitted in the order given by section_order so the layout can be
+% tuned per candidate profile (e.g. projects above experience for career changers).
+\BLOCK{for _section in section_order}
+
+\BLOCK{if _section == 'summary'}
 \BLOCK{if summary}
 \section*{Professional Summary}
 \VAR{summary}
 \BLOCK{endif}
 
-% Experience
+\BLOCK{elif _section == 'experience'}
 \BLOCK{if experience}
 \section*{Experience}
 \BLOCK{for exp in experience}
@@ -44,11 +48,14 @@
     \item \VAR{bullet}
 \BLOCK{endfor}
 \end{itemize}
+\BLOCK{if exp.tech}
+\textit{Technologies:} \VAR{exp.tech | join(', ')}
+\BLOCK{endif}
 \vspace{2pt}
 \BLOCK{endfor}
 \BLOCK{endif}
 
-% Education
+\BLOCK{elif _section == 'education'}
 \BLOCK{if education}
 \section*{Education}
 \BLOCK{for edu in education}
@@ -65,7 +72,7 @@
 \BLOCK{endfor}
 \BLOCK{endif}
 
-% Projects
+\BLOCK{elif _section == 'projects'}
 \BLOCK{if projects}
 \section*{Projects}
 \BLOCK{for proj in projects}
@@ -81,7 +88,7 @@
 \BLOCK{endfor}
 \BLOCK{endif}
 
-% Skills
+\BLOCK{elif _section == 'skills'}
 \BLOCK{if skills}
 \section*{Skills}
 \BLOCK{if skills is mapping}
@@ -93,7 +100,7 @@
 \BLOCK{endif}
 \BLOCK{endif}
 
-% Awards
+\BLOCK{elif _section == 'awards'}
 \BLOCK{if awards}
 \section*{Awards}
 \begin{itemize}[leftmargin=1.5em, topsep=1pt, itemsep=1pt, parsep=0pt]
@@ -102,5 +109,9 @@
 \BLOCK{endfor}
 \end{itemize}
 \BLOCK{endif}
+
+\BLOCK{endif}
+
+\BLOCK{endfor}
 
 \end{document}
