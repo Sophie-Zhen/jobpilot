@@ -10,6 +10,7 @@ from langgraph.types import interrupt
 from jobpilot.config import Settings
 from jobpilot.job_sources import search_jobs_multi_query
 from jobpilot.profile import load_profile
+from jobpilot.referrals import find_referrers, load_connections
 from jobpilot.stories import StoryBank
 from jobpilot.storage import StoryStore
 
@@ -65,18 +66,38 @@ def search_jobs_node(state: dict[str, Any], settings: Settings) -> dict[str, Any
     return {"search_query": query, "jobs_found": jobs, "messages": messages}
 
 
-def score_jobs_node(state: dict[str, Any]) -> dict[str, Any]:
+_REFERRAL_BOOST = 0.15  # a warm path is the ~10x lever — float those jobs up.
+
+
+def score_jobs_node(state: dict[str, Any], settings: Settings) -> dict[str, Any]:
     profile_skills = set(state.get("profile", {}).get("skills", []))
     learning_progress = state.get("learning_progress", {})
     bonus_skills = set(learning_progress.get("score_bonus_skills", []))
+
+    # Referrals are the single biggest lever (Orosz ch.2) and jump the "local
+    # candidates first" queue for a visa candidate — so a warm path lifts the job's
+    # score, surfacing referable roles at the top of the pipeline.
+    connections = load_connections(settings.connections_csv)
+
     scored = []
     for job in state.get("jobs_found", []):
         job_skills = set(job.get("skills", []))
         overlap = len(profile_skills.intersection(job_skills))
         bonus_overlap = len(bonus_skills.intersection(job_skills))
         weighted_overlap = overlap + (0.5 * bonus_overlap)
-        score = round(weighted_overlap / max(len(job_skills), 1), 2)
-        scored.append({**job, "score": score, "skill_bonus": bonus_overlap})
+        skill_score = round(weighted_overlap / max(len(job_skills), 1), 2)
+
+        referrers = find_referrers(job.get("company", ""), connections) if connections else []
+        referral_boost = _REFERRAL_BOOST if referrers else 0.0
+        score = round(min(1.0, skill_score + referral_boost), 2)
+
+        scored.append({
+            **job,
+            "score": score,
+            "skill_score": skill_score,
+            "skill_bonus": bonus_overlap,
+            "referral_count": len(referrers),
+        })
     scored.sort(key=lambda x: x["score"], reverse=True)
     return {"scored_jobs": scored}
 
@@ -100,6 +121,7 @@ def review_jobs_node(state: dict[str, Any], settings: Settings) -> dict[str, Any
                     "title": job["title"],
                     "company": job["company"],
                     "score": job["score"],
+                    "referral_count": job.get("referral_count", 0),
                 }
                 for job in scored
             ],

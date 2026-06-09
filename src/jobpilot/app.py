@@ -474,10 +474,13 @@ with tab_pipeline:
         from jobpilot.job_sources import score_jobs
         profile = load_profile(load_settings())
         profile_skills = set(profile.get("skills", []))
+        from jobpilot.referrals import load_connections
+        _connections = load_connections(load_settings().connections_csv)
         scored_jobs = score_jobs(
             jobs, profile_skills,
             preferred_keywords=profile.get("preferred_keywords"),
             target_roles=profile.get("target_roles"),
+            connections=_connections,
         )
 
         # Sort options
@@ -1090,6 +1093,12 @@ with tab_pipeline:
                     badge_html = _status_badge("New", "new")
 
                 score_html = _score_badge(job.get("score", 0))
+                ref_count = job.get("referral_count", 0)
+                referral_html = (
+                    f'<span style="background:#7c3aed;color:white;padding:2px 8px;border-radius:12px;'
+                    f'font-weight:600;font-size:0.8em;margin-left:4px;">🤝 {ref_count}</span>'
+                    if ref_count else ""
+                )
                 date_found = job.get("date_found", "")
                 location = job.get("location", "")
                 source = job.get("source", "")
@@ -1112,7 +1121,7 @@ with tab_pipeline:
                 st.markdown(f"""<div class="job-card">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
                         <h4>{job['title']}</h4>
-                        <div>{score_html} {badge_html}</div>
+                        <div>{score_html}{referral_html} {badge_html}</div>
                     </div>
                     <div style="font-size:0.95em;color:#374151;">{job.get('company', '')}</div>
                     <div class="meta">{' &middot; '.join(meta_parts)}</div>

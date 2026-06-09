@@ -33,7 +33,7 @@ def build_graph(settings: Settings, store: StoryStore):
     graph.add_node("load_stories", partial(load_stories_node, settings=settings))
     graph.add_node("learning_progress", learning_progress_node)
     graph.add_node("search_jobs", partial(search_jobs_node, settings=settings))
-    graph.add_node("score_jobs", score_jobs_node)
+    graph.add_node("score_jobs", partial(score_jobs_node, settings=settings))
     graph.add_node("review_jobs", partial(review_jobs_node, settings=settings))
     graph.add_node("fetch_jds", fetch_jds_node)
     graph.add_node("tailor_resume", partial(tailor_resume_node, settings=settings))

@@ -473,10 +473,22 @@ def merge_jobs(existing: list[dict], new: list[dict]) -> list[dict]:
     return merged
 
 
+_REFERRAL_BOOST = 0.15  # a warm path is the ~10x lever — float those jobs up.
+
+
 def score_jobs(jobs: list[dict[str, Any]], profile_skills: set[str],
                preferred_keywords: list[str] | None = None,
-               target_roles: list[str] | None = None) -> list[dict[str, Any]]:
-    """Score jobs by skill overlap + keyword/role matching with profile."""
+               target_roles: list[str] | None = None,
+               connections: list[Any] | None = None) -> list[dict[str, Any]]:
+    """Score jobs by skill overlap + keyword/role matching with profile.
+
+    If ``connections`` (a parsed LinkedIn Connections list) is passed, jobs at a
+    company where the candidate has a connection get a referral boost and carry a
+    ``referral_count`` field — a warm path is the single biggest job-search lever
+    (Orosz ch.2) and jumps the "local candidates first" queue for a visa candidate.
+    """
+    from jobpilot.referrals import find_referrers
+
     scored = []
     kw_set = {k.lower() for k in (preferred_keywords or [])}
     role_set = {r.lower() for r in (target_roles or [])}
@@ -500,8 +512,11 @@ def score_jobs(jobs: list[dict[str, Any]], profile_skills: set[str],
         role_bonus = 0.3 if any(r in title_lower for r in role_set) else 0.0
 
         # Weighted combination: skills matter most, keywords next, role bonus
-        score = round(min(skill_score * 0.5 + kw_score * 0.3 + role_bonus, 1.0), 2)
-        scored.append({**job, "score": score})
+        base = round(min(skill_score * 0.5 + kw_score * 0.3 + role_bonus, 1.0), 2)
+
+        referrers = find_referrers(job.get("company", ""), connections) if connections else []
+        score = round(min(base + (_REFERRAL_BOOST if referrers else 0.0), 1.0), 2)
+        scored.append({**job, "score": score, "match_score": base, "referral_count": len(referrers)})
     scored.sort(key=lambda x: x["score"], reverse=True)
     return scored
 
