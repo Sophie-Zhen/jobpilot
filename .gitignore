@@ -1,5 +1,7 @@
 .env
 .DS_Store
+# Claude Code local state: per-machine permission allowlist + runtime lock.
+.claude/
 __pycache__/
 *.pyc
 *.egg-info/
