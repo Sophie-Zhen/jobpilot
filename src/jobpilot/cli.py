@@ -737,6 +737,25 @@ def _is_eng_flavored(title: str) -> bool:
     return bool(eng.search(title)) and not non_eng.search(title)
 
 
+# Seniority terms above Sophie's career-changer band (grad / junior / mid IC).
+# Used by the digest ONLY — discover still collects these for market stats,
+# they're just not pushed as cards. Tune this set to widen/narrow the band.
+_OVER_BAND_RE = None
+
+
+def _is_over_band(title: str) -> bool:
+    """True if the title signals a seniority level above the target band."""
+    global _OVER_BAND_RE
+    if _OVER_BAND_RE is None:
+        import re as _re
+        _OVER_BAND_RE = _re.compile(
+            r"\b(senior|sr|staff|principal|lead|manager|director|"
+            r"head\s+of|vp|vice\s+president|distinguished|architect)\b",
+            _re.IGNORECASE,
+        )
+    return bool(_OVER_BAND_RE.search(title or ""))
+
+
 _RELATIVE_AGE_RE = None
 
 
@@ -921,6 +940,8 @@ def digest(args: argparse.Namespace) -> None:
 
     Filters pipeline_jobs.json by:
       - eng-flavored title (same regex as discover)
+      - not over-band (excludes senior/principal/staff/lead/manager/etc — the
+        career-changer band is grad/junior/mid IC; discover still collects them)
       - job_id not in applications.json (skip already-applied)
       - job_id not in skipped.json (skip already-dropped)
       - job_id not in data/digested.json (skip already-sent today/earlier)
@@ -977,12 +998,16 @@ def digest(args: argparse.Namespace) -> None:
     skipped_no_date = 0
     skipped_too_old = 0
     skipped_dup = 0
+    skipped_over_band = 0
     for j in jobs:
         if not j.get("id"):
             continue
         if j["id"] in applied_ids or j["id"] in sent_ids or j["id"] in skipped_ids:
             continue
         if not _is_eng_flavored(j.get("title", "")):
+            continue
+        if _is_over_band(j.get("title", "")):
+            skipped_over_band += 1  # senior/principal/lead/manager/… — above band
             continue
         if _norm_key(j.get("company", ""), j.get("title", "")) in seen_keys:
             skipped_dup += 1  # same role already applied/rejected/skipped
@@ -1020,7 +1045,7 @@ def digest(args: argparse.Namespace) -> None:
     picks = deduped[: args.limit]
     print(f"Filter: age≤{max_age}d  "
           f"(skipped {skipped_no_date} undateable, {skipped_too_old} too old, "
-          f"{skipped_dup} dup-of-seen)")
+          f"{skipped_over_band} over-band, {skipped_dup} dup-of-seen)")
 
     if not picks:
         print("Nothing to digest: 0 eligible jobs after filters.")
