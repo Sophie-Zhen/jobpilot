@@ -48,7 +48,8 @@ def proj(tmp_path, monkeypatch):
 
 
 def _args(**kw):
-    base = dict(reset=False, send=False, max_age_days=7, limit=10, dry_run=True)
+    base = dict(reset=False, send=False, max_age_days=7, limit=10, dry_run=True,
+                no_jd_filter=True)  # this file covers the title-based over-band filter
     base.update(kw)
     return argparse.Namespace(**base)
 

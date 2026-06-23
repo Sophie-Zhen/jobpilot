@@ -935,6 +935,67 @@ def _norm_key(company: str, title: str) -> tuple[str, str]:
     return norm(company), norm(title)
 
 
+# JD-based seniority gate: titles like a bare "Software Engineer" can hide a
+# "6+ years required" senior req in the JD body (only the description reveals
+# it). We read the JD (fetching it for LinkedIn jobs that ship without one) and
+# classify graduate/junior/mid/senior, dropping mid/senior. Verdicts are cached
+# per job id so each role is classified once, ever.
+_SENIORITY_CACHE_PATH = Path("data/seniority_cache.json")
+# Levels the career-changer band can realistically pass (kept); the rest dropped.
+_KEEP_LEVELS = {"graduate", "junior"}
+# Min description length before we trust a stored JD; below this we fetch the
+# full JD (LinkedIn search results ship with an empty/near-empty description).
+_JD_MIN_LEN = 200
+# Safety valve: max classifications per run so a pathological pool (all senior)
+# can't trigger unbounded fetches.
+_JD_CLASSIFY_CAP = 25
+
+
+def _load_seniority_cache() -> dict[str, str]:
+    if not _SENIORITY_CACHE_PATH.exists():
+        return {}
+    try:
+        return json.loads(_SENIORITY_CACHE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_seniority_cache(cache: dict[str, str]) -> None:
+    _SENIORITY_CACHE_PATH.write_text(
+        json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def _classify_seniority(job: dict, cache: dict[str, str]) -> str | None:
+    """Classify a job's seniority by reading its JD; cache the verdict.
+
+    Fetches the full JD (via ``fetch_full_jd`` → Claude WebFetch) when the stored
+    description is too thin to judge. Returns 'graduate'|'junior'|'mid'|'senior',
+    or ``None`` on failure (caller fails OPEN — the cheap title filter already
+    passed, so a fetch hiccup shouldn't silently drop a possibly-good role).
+    Only successful verdicts are cached, so a transient failure retries later.
+    """
+    from jobpilot.llm import classify_role_level, fetch_full_jd
+
+    jid = job.get("id")
+    if jid and jid in cache:
+        return cache[jid]
+
+    desc = job.get("full_description") or job.get("description") or ""
+    if len(desc) < _JD_MIN_LEN and job.get("url"):
+        full = fetch_full_jd(job["url"])
+        if full:
+            job = {**job, "full_description": full}
+
+    try:
+        level = classify_role_level(job)
+    except Exception:
+        return None
+    if jid:
+        cache[jid] = level
+    return level
+
+
 def digest(args: argparse.Namespace) -> None:
     """Push today's top eng-flavored, un-digested, un-applied jobs to Telegram.
 
@@ -947,6 +1008,9 @@ def digest(args: argparse.Namespace) -> None:
       - job_id not in data/digested.json (skip already-sent today/earlier)
       - normalized (company, title) not already applied/rejected/skipped, and
         deduped within the run (same role re-posted under a new id)
+      - JD-based seniority gate: reads each candidate's JD (fetching it for
+        LinkedIn jobs that ship without one) and drops mid/senior, keeping
+        graduate/junior. Cached per id; fails open; --no-jd-filter bypasses.
 
     Sends one Telegram message per job (one card per job sets up Phase 2
     inline buttons). Tracks sent ids in data/digested.json. Use --reset
@@ -1042,10 +1106,35 @@ def digest(args: argparse.Namespace) -> None:
             continue
         run_seen.add(key)
         deduped.append(j)
-    picks = deduped[: args.limit]
+    # JD-based seniority gate: a title can pass the over-band check yet hide a
+    # "6+ years required" senior req in its JD body. Read each candidate's JD
+    # (fetching it for LinkedIn jobs that ship without one) and drop mid/senior,
+    # keeping graduate/junior. Lazy + priority-ordered: classify only enough of
+    # `deduped` to fill the digest, so we pay for the fewest fetches. Verdicts
+    # are cached across runs, and a fetch/classify failure fails OPEN (the cheap
+    # title filter already passed). --no-jd-filter bypasses it entirely.
+    dropped_by_jd = 0
+    if args.no_jd_filter:
+        picks = deduped[: args.limit]
+    else:
+        cache = _load_seniority_cache()
+        classified = 0
+        picks = []
+        for j in deduped:
+            if len(picks) >= args.limit or classified >= _JD_CLASSIFY_CAP:
+                break
+            level = _classify_seniority(j, cache)
+            classified += 1
+            if level is not None and level not in _KEEP_LEVELS:
+                dropped_by_jd += 1
+                continue
+            picks.append(j)  # keep graduate/junior; fail-open when level is None
+        _save_seniority_cache(cache)
+
+    jd_note = "" if args.no_jd_filter else f", {dropped_by_jd} over-band by JD"
     print(f"Filter: age≤{max_age}d  "
           f"(skipped {skipped_no_date} undateable, {skipped_too_old} too old, "
-          f"{skipped_over_band} over-band, {skipped_dup} dup-of-seen)")
+          f"{skipped_over_band} over-band, {skipped_dup} dup-of-seen{jd_note})")
 
     if not picks:
         print("Nothing to digest: 0 eligible jobs after filters.")
@@ -1422,6 +1511,11 @@ def main() -> None:
     digest_parser.add_argument(
         "--send", action="store_true",
         help="With --reset: also send after clearing (default: clear-and-exit)",
+    )
+    digest_parser.add_argument(
+        "--no-jd-filter", action="store_true",
+        help="Skip the JD-reading seniority gate (faster; title filter only). "
+             "Use if LinkedIn fetches are failing or for a quick run.",
     )
     digest_parser.set_defaults(func=digest)
 
