@@ -27,6 +27,7 @@ data/digested.json
 data/saved.json
 data/skipped.json
 data/inbox_state.json
+data/seniority_cache.json
 audit_report.pdf
 
 # Phase 4 inbox-sync: OAuth secrets live in ~/.config/jobpilot/ outside the
