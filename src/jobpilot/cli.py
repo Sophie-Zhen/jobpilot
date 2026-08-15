@@ -1177,6 +1177,7 @@ def tailor_one_job(args: argparse.Namespace) -> None:
     """
     from jobpilot.llm import (
         TARGET_PAGES_BY_VARIANT,
+        check_hard_requirements,
         classify_role_level,
         fetch_full_jd,
         generate_cover_letter,
@@ -1236,6 +1237,25 @@ def tailor_one_job(args: argparse.Namespace) -> None:
                 print(f"  fetched: {len(full)} chars")
         except Exception as exc:
             print(f"  fetch failed: {exc}; proceeding with short description")
+
+    # Hard-requirement gate: a JD asking for something the profile structurally
+    # cannot supply (years floor, PhD, another language, clearance) is a reject
+    # regardless of how the CV is worded — skip before spending tailoring calls.
+    if not args.force:
+        print("Checking hard requirements ...")
+        try:
+            gate = check_hard_requirements(job, profile)
+        except Exception as exc:
+            print(f"  gate check failed: {exc}; proceeding with tailoring")
+            gate = {}
+        if gate.get("verdict") == "skip":
+            print(f"\nSKIP — [{company}] {title}")
+            for blocker in gate.get("blockers", []):
+                print(f"  ✗ {blocker}")
+            if gate.get("note"):
+                print(f"  {gate['note']}")
+            print("\nNothing tailored. Re-run with --force to override.")
+            return
 
     job_text = f"{title} {description}"
     relevant_stories = bank.find_similar(job_text, top_k=8)
@@ -1369,6 +1389,10 @@ def main() -> None:
     tailor_parser.add_argument(
         "--cover-letter", action="store_true",
         help="Also generate and render a cover letter (off by default — the CV is the deliverable)",
+    )
+    tailor_parser.add_argument(
+        "--force", action="store_true",
+        help="Tailor even if the JD has hard requirements the profile cannot meet",
     )
     tailor_parser.set_defaults(func=tailor_one_job)
 
