@@ -917,7 +917,24 @@ def evaluate_cv(
     """Independent evaluation of a tailored CV against the job description."""
     job_description = job.get("full_description", job.get("description", ""))
 
-    cv_parts = [f"Summary: {cv_data.get('summary', '')}"]
+    # The header and education blocks are on the rendered PDF but used to be left
+    # out of this prompt, so every evaluation "discovered" a missing location /
+    # work-authorisation line and could not see the MSc — the strongest credential
+    # a career changer has. Both are first-scan items; send them.
+    header = " | ".join(
+        p for p in (cv_data.get("location", ""), cv_data.get("visa", "")) if p
+    )
+    cv_parts = []
+    if header:
+        cv_parts.append(f"CV header line: {header}")
+    cv_parts.append(f"Summary: {cv_data.get('summary', '')}")
+    for edu in cv_data.get("education", []):
+        cv_parts.append(
+            f"\nEducation: {edu.get('degree', '')}, {edu.get('institution', '')} "
+            f"({edu.get('dates', '')})"
+        )
+        for detail in edu.get("details", []):
+            cv_parts.append(f"  - {detail}")
     for exp in cv_data.get("experience", []):
         cv_parts.append(f"\n{exp.get('title', '')} at {exp.get('company', '')} ({exp.get('dates', '')})")
         for bullet in exp.get("bullets", []):
@@ -938,12 +955,14 @@ def evaluate_cv(
         "You are an experienced technical recruiter screening this CV the way it is "
         "really screened: a 7-second first scan (location/visa, years of experience, "
         "key technologies, titles & companies), THEN a closer read only if it survives.\n"
-        "Evaluate this CV and cover letter against the job description.\n"
-        "Be critical but fair. The candidate is a career changer (tax/government -> AI/ML).\n\n"
+        "Evaluate this application against the job description.\n"
+        "Be critical but fair. The candidate is a career changer (tax/government -> AI/ML).\n"
+        "Judge only what is shown below — if something is absent from the CV text, "
+        "it is absent from the CV.\n\n"
         f"JOB DESCRIPTION:\n{job_description[:2000]}\n\n"
         f"CV:\n{cv_text}\n\n"
-        f"COVER LETTER:\n{cover_letter[:1500]}\n\n"
-        "Return a JSON object with:\n"
+        + (f"COVER LETTER:\n{cover_letter}\n\n" if cover_letter else "")
+        + "Return a JSON object with:\n"
         "- overall_score: 1-10\n"
         "- pile: 'yes' | 'maybe' | 'no' — the recruiter's first-scan triage. "
         "'yes' = jumps out as a strong fit, would interview; 'maybe' = close but not "
