@@ -423,7 +423,7 @@ def tailor_cv(
         for e in master["experience"]
     )
     proj_summary = "\n".join(
-        f"  [{p['id']}] {p['title']} ({p['tech']})"
+        f"  [{p['id']}] {p['title']} ({p['tech']}) — {p.get('dates', 'undated')}"
         for p in master["projects"]
     )
 
@@ -431,6 +431,7 @@ def tailor_cv(
         f"{framing_rules}\n"
         f"{level_instructions}\n\n"
         f"{TONE_RULES}\n"
+        f"{SELECTION_RULES}\n"
         f"You are tailoring a CV for a specific job (variant: {variant}). The candidate's full CV data is already prepared.\n"
         "You only need to provide ADJUSTMENTS — do not rewrite the whole CV.\n"
         "Follow the FRAMING_RULES and role-level guidance above carefully.\n\n"
@@ -772,6 +773,27 @@ TONE_RULES = (
     "Show personality. Avoid corporate buzzwords. Sound like someone you'd want to talk to.\n"
 )
 
+SELECTION_RULES = (
+    "WHAT TO PUT ON THE PAGE — SELECTION RULES:\n"
+    "These come from recruiter evaluations of earlier versions of this CV. Every one "
+    "of them was a scored criticism, not a style preference.\n"
+    "- RECENCY: the last dated employment ends Dec 2025. Include at least one project "
+    "dated 2026 among the selected projects, and put it first — otherwise the CV reads "
+    "as if the candidate stopped working.\n"
+    "- NUMBERS: for every role and project, prefer the bullets that carry a measured "
+    "result (accuracy, %, count, scale, latency). If a role has any bullet with a "
+    "number, at least one selected bullet for that role must have one.\n"
+    "- NO HEDGING: reject bullets whose verb hides ownership — 'helping architect', "
+    "'contributed to', 'involved in', 'assisted with', 'served on'. Prefer the bullet "
+    "that states what was built or found.\n"
+    "- TAX BUREAU: select at most 2 bullets, and choose the ones with data, SQL, "
+    "automation or analysis content. Thirteen years of context is established by the "
+    "dates alone; extra bullets spend page space on the wrong career.\n"
+    "- SUMMARY CONCRETENESS: name 2-3 specific technologies that appear in BOTH the "
+    "job description and the candidate's skills. A summary a reader can't verify "
+    "against a stack is filler.\n"
+)
+
 FRAMING_RULES_TECH_ENG = (
     "IDENTITY FRAMING — CRITICAL (variant: tech_eng):\n"
     "The candidate is an NLP/ML Engineer with MSc CS (NLP) from DCU (First-Class, top 5%) "
@@ -789,8 +811,10 @@ FRAMING_RULES_TECH_ENG = (
     "tools at the tax bureau — the career transition is CONTINUOUS, not abrupt. Surface "
     "this when describing tax-bureau experience.\n"
     "- Reference projects by capability ('autonomous job-search copilot', 'neuro-symbolic "
-    "legal-reasoning pipeline'), not by brand-name tech stack (avoid 'LangGraph-orchestrated' "
-    "etc. in the summary — those belong in skills / project sections).\n"
+    "legal-reasoning pipeline'), and name the stack plainly after it when that stack "
+    "matches the JD ('a Snowflake/dbt transactions warehouse with an LLM "
+    "natural-language-to-SQL layer'). What to avoid is stack words used as adjectives "
+    "to inflate a claim ('LangGraph-orchestrated multi-agent architecture').\n"
 )
 
 FRAMING_RULES_GRAD = (
