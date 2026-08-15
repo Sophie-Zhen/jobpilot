@@ -1248,8 +1248,10 @@ def tailor_one_job(args: argparse.Namespace) -> None:
     cv_data["variant"] = variant
     cv_data["job_id"] = job_id
 
-    print("Calling generate_cover_letter (LLM, ~30-60s) ...")
-    cover_letter_text = generate_cover_letter(job, relevant_stories, profile, role_level=role_level)
+    cover_letter_text = ""
+    if args.cover_letter:
+        print("Calling generate_cover_letter (LLM, ~30-60s) ...")
+        cover_letter_text = generate_cover_letter(job, relevant_stories, profile, role_level=role_level)
 
     output_dir = Path(settings.output_dir) / _job_folder(job)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1273,15 +1275,17 @@ def tailor_one_job(args: argparse.Namespace) -> None:
     print("\nRendering CV PDF ...")
     cv_path = render_cv(cv_data, output_dir / f"cv_{variant}.pdf")
 
-    print("Rendering cover letter PDF ...")
-    cl_data = {
-        "name": cv_data.get("name", ""),
-        "date": date.today().strftime("%B %d, %Y"),
-        "company": company,
-        "job_title": title,
-        "body": cover_letter_text,
-    }
-    cl_path = render_cover_letter(cl_data, output_dir / f"cover_letter_{variant}.pdf")
+    cl_path = None
+    if args.cover_letter:
+        print("Rendering cover letter PDF ...")
+        cl_data = {
+            "name": cv_data.get("name", ""),
+            "date": date.today().strftime("%B %d, %Y"),
+            "company": company,
+            "job_title": title,
+            "body": cover_letter_text,
+        }
+        cl_path = render_cover_letter(cl_data, output_dir / f"cover_letter_{variant}.pdf")
 
     target = TARGET_PAGES_BY_VARIANT[variant]
     info = check_page_count(cv_path, target_pages=target)
@@ -1317,7 +1321,8 @@ def tailor_one_job(args: argparse.Namespace) -> None:
 
     print("\nReady to review:")
     print(f"  open {cv_path}")
-    print(f"  open {cl_path}")
+    if cl_path:
+        print(f"  open {cl_path}")
     print(f"  state: {state_path}")
 
 
@@ -1344,7 +1349,7 @@ def main() -> None:
     # tailor — per-job manual workflow (one job + one variant -> PDFs)
     tailor_parser = subparsers.add_parser(
         "tailor",
-        help="Tailor CV + cover letter for ONE job (from pipeline_jobs.json) and render PDFs",
+        help="Tailor a CV for ONE job (from pipeline_jobs.json) and render the PDF",
     )
     tailor_group = tailor_parser.add_mutually_exclusive_group(required=True)
     tailor_group.add_argument("--job-id", type=str, help="Job ID from pipeline_jobs.json")
@@ -1359,7 +1364,11 @@ def main() -> None:
     )
     tailor_parser.add_argument(
         "--no-eval", action="store_true",
-        help="Skip the post-render ATS + recruiter-scan evaluation (faster; PDFs only)",
+        help="Skip the post-render ATS + recruiter-scan evaluation (faster; PDF only)",
+    )
+    tailor_parser.add_argument(
+        "--cover-letter", action="store_true",
+        help="Also generate and render a cover letter (off by default — the CV is the deliverable)",
     )
     tailor_parser.set_defaults(func=tailor_one_job)
 
