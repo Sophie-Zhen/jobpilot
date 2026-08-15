@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import tempfile
@@ -53,6 +54,9 @@ def escape_latex(text: str) -> str:
     text = text.replace(_BS, r"\textbackslash{}")
     text = text.replace(_TI, r"\textasciitilde{}")
     text = text.replace(_CA, r"\textasciicircum{}")
+    # Step 6: markdown-style **bold** → \textbf{...}. Runs last so the braces it
+    # introduces stay literal LaTeX (brace escaping in step 3 already happened).
+    text = re.sub(r"\*\*(.+?)\*\*", r"\\textbf{\1}", text)
     return text
 
 
