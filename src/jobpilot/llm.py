@@ -696,6 +696,66 @@ def classify_role_level(job: dict[str, Any]) -> str:
         return "mid"
 
 
+def check_hard_requirements(job: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+    """Decide whether a JD has requirements no CV rewrite can satisfy.
+
+    Only structural blockers count — a years-of-experience floor, a degree the
+    candidate doesn't hold, a working language she doesn't speak, citizenship or
+    security clearance, or a location she can't work from. Missing *skills* are
+    never blockers: those are what tailoring and the gap analysis are for.
+    """
+    description = job.get("full_description", job.get("description", ""))
+    master = _load_master_cv()
+
+    experience_lines = [
+        f"- {e.get('title', '')} at {e.get('company', '')} ({e.get('dates', '')})"
+        for e in master.get("experience", [])
+    ]
+    education_lines = [
+        f"- {ed.get('degree', '')}, {ed.get('institution', '')} ({ed.get('dates', '')})"
+        for ed in master.get("education", [])
+    ]
+
+    prompt = (
+        "You are screening a job description on behalf of a candidate, to decide "
+        "whether applying is worth the effort.\n\n"
+        "CANDIDATE (verified facts):\n"
+        f"Location: {profile.get('location', '')}\n"
+        f"Work authorisation: {profile.get('visa_status', '')}\n"
+        "Education:\n" + "\n".join(education_lines) + "\n"
+        "Employment history:\n" + "\n".join(experience_lines) + "\n"
+        "Professional software/AI engineering experience: about 6 months "
+        "(research internship), plus a 9-month masters practicum and a personal "
+        "project portfolio. The 13 years at the tax bureau are analytical and "
+        "regulatory work, not software engineering employment.\n"
+        "Languages: English (fluent), Mandarin (native).\n\n"
+        f"JOB TITLE: {job.get('title', '')}\n"
+        f"JOB DESCRIPTION:\n{description[:2500]}\n\n"
+        "Identify ONLY hard blockers — requirements that no CV rewrite can satisfy:\n"
+        "- an explicit years-of-experience floor the candidate is far below "
+        "(treat 'X+ years' as hard only when X is 4 or more; 2-3 years is a stretch, not a blocker)\n"
+        "- a required degree she does not hold (e.g. PhD)\n"
+        "- a working language she does not speak\n"
+        "- citizenship, residency or security-clearance requirements she cannot meet\n"
+        "- a work location she cannot commute to or relocate for\n"
+        "Missing technical skills, tools or domain exposure are NOT blockers.\n"
+        "'Preferred', 'nice to have', 'bonus' items are NOT blockers.\n\n"
+        'Return ONLY a JSON object: {"verdict": "skip|proceed", "blockers": '
+        '["one short sentence each, quoting the JD"], "note": "one sentence, '
+        'optional"}\n'
+        "verdict is 'skip' only if at least one hard blocker is present.\n"
+        "No markdown fences."
+    )
+    try:
+        response = _call_claude(prompt, timeout=60)
+        data = _parse_json_response(response)
+    except Exception:
+        return {}
+    if data.get("verdict") not in ("skip", "proceed"):
+        return {}
+    return data
+
+
 TONE_RULES = (
     "WRITING TONE — CRITICAL RULES:\n"
     "Write like a real person, not an AI. Recruiters flag AI-generated content.\n"
