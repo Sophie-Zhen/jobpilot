@@ -1136,6 +1136,27 @@ def suggest_adjustments(
         raise RuntimeError(f"Adjustment suggestion failed: {exc}") from exc
 
 
+def recoverable_gaps(ats_result: Any) -> list[str]:
+    """Missing must-haves that master_cv can truthfully support.
+
+    ``in_master`` means the master CV already carries the skill and this
+    tailoring pass simply failed to surface it; ``partial`` means it is there
+    under different wording. Either is worth another iteration. ``absent`` is a
+    real gap — no rewrite closes it, and iterating against it only pressures the
+    model to invent.
+    """
+    if ats_result is None:
+        return []
+    from jobpilot.gaps import _master_cv_searchable_text, annotate_with_master_cv
+
+    master_text = _master_cv_searchable_text()
+    return [
+        kw
+        for kw in ats_result.coverage.missing_must
+        if annotate_with_master_cv(kw, master_text) in ("in_master", "partial")
+    ]
+
+
 def auto_tailor_loop(
     job: dict[str, Any],
     stories: list[Story],
@@ -1143,17 +1164,21 @@ def auto_tailor_loop(
     role_level: str | None = None,
     max_iterations: int = 3,
     progress_cb: Any = None,
-    ats_threshold: float = 0.75,
 ) -> dict[str, Any]:
-    """Tailor → score → adjust loop, driven by an objective ATS score.
+    """Tailor → score → adjust loop, driven by the coverage gap list.
 
     The loop converges when:
-      - ``ats_score.overall >= ats_threshold`` (the objective gate), OR
+      - no missing must-have is left that master_cv can truthfully cover
+        (the objective gate — see :func:`recoverable_gaps`), OR
       - the LLM recruiter scorer would shortlist AND ATS coverage isn't
         catastrophically low (fallback path for cases the ATS simulator
         under-weights), OR
       - ``max_iterations`` reached, OR
       - ATS score plateaus across an adjustment round.
+
+    The ATS number itself is not a gate. Its denominator is one LLM reading of
+    one JD, so it is not comparable across runs or across jobs; the gap list is
+    the part that survives.
 
     ATS gaps (``missing_must``, top ``missing_nice``) are fed back into
     ``suggest_adjustments`` so each iteration can target the actual gap.
@@ -1194,8 +1219,8 @@ def auto_tailor_loop(
             ats_result = _ats_score(
                 cv_data=cv,
                 jd_text=jd_text,
-                threshold=ats_threshold,
                 use_llm=True,
+                job_id=job.get("id"),
             )
         except Exception as exc:
             _progress(f"ATS scoring failed ({exc}); skipping objective gate this iteration.")
@@ -1218,13 +1243,19 @@ def auto_tailor_loop(
             "missing_must": ats_result.coverage.missing_must if ats_result else [],
         })
 
-        # Primary exit: objective ATS threshold met.
-        if ats_result is not None and ats_result.overall >= ats_threshold:
-            _progress(
-                f"ATS threshold met at iteration {i + 1} "
-                f"(ats={ats_result.overall:.2f} >= {ats_threshold})"
-            )
-            break
+        # Primary exit: nothing truthful left to surface. What remains missing
+        # is a real gap, and another pass can only close it by inventing.
+        if ats_result is not None:
+            recoverable = recoverable_gaps(ats_result)
+            iterations[-1]["recoverable_gaps"] = recoverable
+            if not recoverable:
+                remaining = ats_result.coverage.missing_must
+                _progress(
+                    f"Converged at iteration {i + 1}: no missing must-have that the "
+                    f"master CV supports"
+                    + (f" (real gaps left: {', '.join(remaining[:4])})" if remaining else "")
+                )
+                break
 
         # Secondary exit: LLM says shortlist AND ATS isn't catastrophic.
         if shortlisted and ats_overall >= 0.5:

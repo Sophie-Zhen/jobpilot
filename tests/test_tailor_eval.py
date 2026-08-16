@@ -41,7 +41,8 @@ class TestFormatTailorEval:
 
     def test_surfaces_ats_gap(self):
         out = _format_tailor_eval(_fake_ats(), _EVAL)
-        assert "ATS: 0.62 (below threshold)" in out
+        # The number is reported, but never as a pass/fail gate.
+        assert "ATS: 0.62 keyword coverage (not a gate)" in out
         assert "Kubernetes, Terraform" in out
 
     def test_surfaces_trajectory_and_weak_bullets(self):
