@@ -216,28 +216,38 @@ class JDRequirements:
         return asdict(self)
 
 
-def _cache_path(jd_text: str) -> Path:
-    digest = hashlib.sha256(jd_text.encode("utf-8")).hexdigest()[:16]
+def _cache_path(jd_text: str, job_id: str | None = None) -> Path:
+    # Key on job_id when the caller knows it. Keying on the JD text means every
+    # re-fetch of the same posting (LinkedIn prose shifts between fetches, and
+    # fetch_full_jd is itself an LLM call) lands on a fresh cache entry and gets
+    # a fresh extraction — so the same job scores against a different
+    # requirement list on every run.
+    if job_id:
+        key = re.sub(r"[^A-Za-z0-9_.-]", "_", job_id)[:64]
+    else:
+        key = hashlib.sha256(jd_text.encode("utf-8")).hexdigest()[:16]
     cache_dir = Path(__file__).resolve().parent.parent.parent / "data" / "jd_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / f"{digest}.json"
+    return cache_dir / f"{key}.json"
 
 
 def extract_jd_requirements(
     jd_text: str,
     use_llm: bool = True,
     use_cache: bool = True,
+    job_id: str | None = None,
 ) -> JDRequirements:
     """Extract must-have and nice-to-have skills from a job description.
 
     - Regex pre-pass surfaces candidates (cheap, deterministic).
     - Single Claude call (optional) splits them into must vs nice and normalizes.
-    - Result is cached by JD hash; repeated calls on the same JD are free.
+    - Result is cached by ``job_id`` when given, else by JD hash. Pass the
+      job_id so re-runs of the same job score against one stable list.
     """
     if not jd_text or len(jd_text.strip()) < 50:
         return JDRequirements()
 
-    cache_file = _cache_path(jd_text)
+    cache_file = _cache_path(jd_text, job_id)
     if use_cache and cache_file.exists():
         try:
             data = json.loads(cache_file.read_text(encoding="utf-8"))
@@ -572,6 +582,7 @@ def ats_score(
     pdf_path: Path | None = None,
     threshold: float = 0.75,
     use_llm: bool = True,
+    job_id: str | None = None,
 ) -> ATSScore:
     """Composite ATS score.
 
@@ -593,7 +604,11 @@ def ats_score(
     else:
         cv_text = extract_pdf_text(pdf_path)  # type: ignore[arg-type]
 
-    requirements = extract_jd_requirements(jd_text, use_llm=use_llm) if jd_text else JDRequirements()
+    requirements = (
+        extract_jd_requirements(jd_text, use_llm=use_llm, job_id=job_id)
+        if jd_text
+        else JDRequirements()
+    )
     coverage = keyword_coverage(cv_text, requirements)
 
     parseability: PDFParseability | None = None
