@@ -259,8 +259,9 @@ class TestSectionOrderByVariant:
         from jobpilot.llm import SECTION_ORDER_BY_VARIANT
         order = SECTION_ORDER_BY_VARIANT["tech_eng"]
         assert order.index("experience") < order.index("projects")
-        # Skills stays high (above education) per the book.
-        assert order.index("skills") < order.index("education")
+        # Education sits above skills: the First-Class MSc is the career
+        # changer's hardest credential, so it goes as high as the page allows.
+        assert order.index("education") < order.index("skills")
 
     def test_tailor_cv_attaches_variant_section_order(self):
         from jobpilot.llm import SECTION_ORDER_BY_VARIANT, tailor_cv
