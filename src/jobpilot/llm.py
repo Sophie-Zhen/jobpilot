@@ -792,6 +792,14 @@ SELECTION_RULES = (
     "- SUMMARY CONCRETENESS: name 2-3 specific technologies that appear in BOTH the "
     "job description and the candidate's skills. A summary a reader can't verify "
     "against a stack is filler.\n"
+    "- ATTRIBUTION SAFETY: anything the summary attaches to a project or employer must "
+    "be listed on that same item in AVAILABLE EXPERIENCE / AVAILABLE PROJECTS. Do not "
+    "move a technology from one project to another, do not merge two items into one "
+    "claim, and do not place a project inside an employer the block does not name. "
+    "When the source item does not support the attribution, use open phrasing "
+    "('built X') instead of attributed phrasing ('built X at Y'). The verb must also "
+    "match the source: if the item says evaluated or benchmarked, the summary may not "
+    "say trained, fine-tuned or deployed.\n"
 )
 
 FRAMING_RULES_TECH_ENG = (
