@@ -1137,12 +1137,26 @@ def _format_tailor_eval(ats_result, evaluation: dict) -> str:
     lines = [_EVAL_START, f"{pile_icon} Pile: {pile.upper() or '?'} ({score}/10) · {shortlist_str}"]
 
     if ats_result is not None:
-        passed = "pass" if ats_result.threshold_passed else "below threshold"
-        line = f"ATS: {ats_result.overall:.2f} ({passed})"
+        # The number is display-only: its denominator is one LLM reading of one
+        # JD, so it is not comparable between runs or between jobs. The split
+        # below is the part worth acting on.
+        lines.append(f"ATS: {ats_result.overall:.2f} keyword coverage (not a gate)")
         missing = list(ats_result.coverage.missing_must)
         if missing:
-            line += f" · missing must-haves: {', '.join(missing[:6])}"
-        lines.append(line)
+            from jobpilot.gaps import _master_cv_searchable_text, annotate_with_master_cv
+
+            master_text = _master_cv_searchable_text()
+            buckets: dict[str, list[str]] = {"in_master": [], "partial": [], "absent": []}
+            for keyword in missing:
+                buckets[annotate_with_master_cv(keyword, master_text)].append(keyword)
+            labels = [
+                ("in_master", "on master CV, this pass dropped it"),
+                ("partial", "on master CV under other wording"),
+                ("absent", "real gap — no rewrite closes it"),
+            ]
+            for key, label in labels:
+                if buckets[key]:
+                    lines.append(f"  missing ({label}): {', '.join(buckets[key])}")
 
     traj = evaluation.get("trajectory") or {}
     if isinstance(traj, dict) and traj.get("assessment"):
