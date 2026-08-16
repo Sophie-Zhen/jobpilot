@@ -882,8 +882,8 @@ TARGET_PAGES_BY_VARIANT: dict[str, int] = {
 # Experience because the projects ARE the engineering evidence.
 SECTION_ORDER_BY_VARIANT: dict[str, list[str]] = {
     "grad": ["summary", "skills", "projects", "experience", "education", "awards"],
-    "tech_eng": ["summary", "experience", "skills", "projects", "education", "awards"],
-    "regtech": ["summary", "experience", "skills", "projects", "education", "awards"],
+    "tech_eng": ["summary", "experience", "education", "skills", "projects", "awards"],
+    "regtech": ["summary", "experience", "education", "skills", "projects", "awards"],
 }
 
 VALID_VARIANTS = tuple(FRAMING_RULES_BY_VARIANT.keys())
