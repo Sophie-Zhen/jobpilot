@@ -400,7 +400,9 @@ def recompute_ats_for_stale(
 
         _say(f"computing ATS for {work_file.name} ({job.get('title', '')[:50]})...")
         try:
-            score = ats_score(cv_data=cv_data, jd_text=jd_text, use_llm=True)
+            score = ats_score(
+                cv_data=cv_data, jd_text=jd_text, use_llm=True, job_id=job.get("id")
+            )
         except Exception as exc:
             _say(f"  failed: {exc}")
             continue

@@ -1230,7 +1230,7 @@ def tailor_one_job(args: argparse.Namespace) -> None:
     if len(description) < 500 and job.get("url"):
         print(f"Description is short ({len(description)} chars). Fetching full JD ...")
         try:
-            full = fetch_full_jd(job["url"])
+            full = fetch_full_jd(job["url"], job_id=job.get("id"))
             if full and len(full) > len(description):
                 job["full_description"] = full
                 description = full
@@ -1326,7 +1326,10 @@ def tailor_one_job(args: argparse.Namespace) -> None:
 
         print("\nEvaluating (ATS + recruiter scan, ~30-60s) ...")
         try:
-            ats_result = ats_score(cv_data=cv_data, jd_text=description, pdf_path=cv_path, use_llm=True)
+            ats_result = ats_score(
+                cv_data=cv_data, jd_text=description, pdf_path=cv_path,
+                use_llm=True, job_id=job.get("id"),
+            )
         except Exception as exc:
             print(f"  ATS scoring failed: {exc}")
             ats_result = None

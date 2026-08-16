@@ -645,10 +645,27 @@ def summarize_jd(description: str, title: str = "", company: str = "") -> str:
         return ""
 
 
-def fetch_full_jd(job_url: str) -> str:
-    """Fetch the full job description from a URL using Claude Code WebFetch."""
+def fetch_full_jd(job_url: str, job_id: str | None = None) -> str:
+    """Fetch the full job description from a URL using Claude Code WebFetch.
+
+    The fetch is an LLM call over a live page, so the text it returns differs
+    between runs for the same posting. Pass ``job_id`` to store the first fetch
+    and reuse it: everything downstream (requirement extraction, coverage) then
+    scores against one fixed JD instead of a new rendering each time.
+    """
     if not job_url:
         return ""
+
+    cache_file: Path | None = None
+    if job_id:
+        cache_dir = Path(__file__).resolve().parent.parent.parent / "data" / "jd_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / f"text_{re.sub(r'[^A-Za-z0-9_.-]', '_', job_id)[:64]}.txt"
+        if cache_file.exists():
+            cached = cache_file.read_text(encoding="utf-8")
+            if cached.strip():
+                return cached
+
     prompt = (
         f"Fetch the page at this URL and extract the full job description:\n"
         f"{job_url}\n\n"
@@ -658,9 +675,13 @@ def fetch_full_jd(job_url: str) -> str:
         "Return plain text, not JSON."
     )
     try:
-        return _call_claude(prompt, timeout=60, tools=["WebFetch"])
+        text = _call_claude(prompt, timeout=60, tools=["WebFetch"])
     except Exception:
         return ""
+
+    if cache_file is not None and text.strip():
+        cache_file.write_text(text, encoding="utf-8")
+    return text
 
 
 def classify_role_level(job: dict[str, Any]) -> str:
